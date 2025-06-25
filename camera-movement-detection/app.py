@@ -13,8 +13,12 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from movement_detector import *
 
 def load_css():
-    with open('style.css') as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    css_path = os.path.join(os.path.dirname(__file__), "style.css")
+    try:
+        with open(css_path) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.warning("⚠️ style.css file not found. Using default styles.")
 
 def display_results_tab():
     st.subheader("📊 Analysis Results & Visualizations")
