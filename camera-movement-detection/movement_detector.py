@@ -4,6 +4,67 @@ import numpy as np
 from typing import List
 
 
+def to_grayscale(frame: np.ndarray) -> np.ndarray:
+    if len(frame.shape) == 3:
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return frame
+
+
+def open_video(video_path: str):
+    """Open video file and return capture object"""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return None
+    return cap
+
+
+def read_first_frame(cap):
+    ret, frame = cap.read()
+    if not ret:
+        cap.release()
+        return None, None
+    return cap, frame
+
+
+def create_result_dict(object_frames, object_scores, frames, total_frames, details_list=None, annotated_frames=None, method=None, result_type="object"):
+    """Create standardized result dictionary"""
+    if result_type == "camera":
+        result = {
+            'movement_frames': object_frames,
+            'movement_scores': object_scores,
+            'frames': frames,
+            'total_frames': total_frames
+        }
+    else:  
+        result = {
+            'object_frames': object_frames,
+            'object_scores': object_scores,
+            'frames': frames,
+            'total_frames': total_frames
+        }
+    
+    if details_list is not None:
+        result['details_list'] = details_list
+    if annotated_frames is not None:
+        result['annotated_frames'] = annotated_frames
+    if method is not None:
+        result['method'] = method
+    
+    if not object_frames:
+        result['message'] = "No Movement Detected"
+    
+    return result
+
+
+def get_adaptive_lk_params(frame_area):
+    if frame_area > 1000000:
+        return (25, 25), 4, 11
+    elif frame_area > 500000:
+        return (21, 21), 3, 9
+    else:
+        return (17, 17), 2, 7
+
+
 class CameraMovementDetector:
 
     def __init__(self, method="SIFT", threshold=0.5, min_match_count=10, debug=False):
@@ -27,8 +88,8 @@ class CameraMovementDetector:
         self.last_movement_info = {}
 
     def detect(self, frame1: np.ndarray, frame2: np.ndarray) -> tuple[bool, float, dict[str, any]]:
-        gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-        gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+        gray1 = to_grayscale(frame1)
+        gray2 = to_grayscale(frame2)
 
         kp1, des1 = self.detector.detectAndCompute(gray1, None)
         kp2, des2 = self.detector.detectAndCompute(gray2, None)
@@ -78,10 +139,14 @@ class CameraMovementDetector:
 
         return is_movement, movement_score, self.last_movement_info
 
-    def analyze_video(self, video_path, max_frames=50, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
+    def analyze_video(self, video_path, max_frames=120, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
         """Analyze camera movement in a video file"""
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
+        cap = open_video(video_path)
+        if cap is None:
+            return None
+        
+        cap, prev_frame = read_first_frame(cap)
+        if prev_frame is None:
             return None
         
         movement_frames = []
@@ -91,11 +156,6 @@ class CameraMovementDetector:
         
         frame_count = 0
         processed_frames = 0
-        
-        ret, prev_frame = cap.read()
-        if not ret:
-            cap.release()
-            return None
         
         while True:
             if frame_count > max_frames:
@@ -118,7 +178,6 @@ class CameraMovementDetector:
             if enable_live_viz and live_viz_placeholder is not None:
                 annotated_frame = frame.copy()
                 
-                # Add text overlay with movement info
                 if is_movement:
                     text_color = (0, 255, 0)  # Green for movement
                     movement_text = "CAMERA MOVEMENT DETECTED"
@@ -134,8 +193,7 @@ class CameraMovementDetector:
                     cv2.putText(annotated_frame, f"Translation: {details['translation']:.3f}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 if details and 'num_matches' in details:
                     cv2.putText(annotated_frame, f"Matches: {details['num_matches']}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                
-                # Draw a border around the frame
+
                 h, w = annotated_frame.shape[:2]
                 border_color = text_color if is_movement else (100, 100, 100)
                 cv2.rectangle(annotated_frame, (0, 0), (w-1, h-1), border_color, 3)
@@ -149,36 +207,8 @@ class CameraMovementDetector:
             processed_frames += 1
         
         cap.release()
-        
-        return {
-            'movement_frames': movement_frames,
-            'movement_scores': movement_scores,
-            'details_list': details_list,
-            'frames': frames,
-            'total_frames': frame_count
-        }
+        return create_result_dict(movement_frames, movement_scores, frames, frame_count, details_list, result_type="camera")
 
-
-def detect_significant_movement(frames: List[np.ndarray], threshold: float = 50.0) -> List[int]:
-    """
-    Detect frames where significant camera movement occurs.
-    Args:
-        frames: List of image frames (as numpy arrays).
-        threshold: Sensitivity threshold for detecting movement.
-    Returns:
-        List of indices where significant movement is detected.
-    """
-    movement_indices = []
-    prev_gray = None
-    for idx, frame in enumerate(frames):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        if prev_gray is not None:
-            diff = cv2.absdiff(prev_gray, gray)
-            score = np.mean(diff)
-            if score > threshold:
-                movement_indices.append(idx)
-        prev_gray = gray
-    return movement_indices
 
 class LucasKanadeDetector:
 
@@ -197,7 +227,7 @@ class LucasKanadeDetector:
     def detect_lucas_kanade(self, frame):
 
         if self.prev_gray is None:
-            self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            self.prev_gray = to_grayscale(frame)
             self.prev_points = cv2.goodFeaturesToTrack(
                 self.prev_gray, 
                 mask=None,
@@ -209,7 +239,7 @@ class LucasKanadeDetector:
             self.mask = np.zeros_like(frame)
             return False, 0.0, {"error": "First frame"}, frame
         
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = to_grayscale(frame)
         
         if self.prev_points is None or len(self.prev_points) == 0:
             self.prev_gray = gray
@@ -251,7 +281,7 @@ class LucasKanadeDetector:
         if len(good_new) > 0 and len(good_old) > 0:
             distances = np.sqrt(np.sum((good_new - good_old) ** 2, axis=1))
             movement_score = np.mean(distances)
-            has_movement = movement_score > 1.0  # Eşik değeri
+            has_movement = movement_score > 1.0  
         else:
             movement_score = 0.0
             has_movement = False
@@ -282,15 +312,17 @@ class LucasKanadeDetector:
         
         return has_movement, movement_score, details, result_frame
 
-    def detect_objects(self, video_path):
+    def detect_objects(self, video_path, max_frames=120):
         """Detect object movement in video using Lucas-Kanade optical flow"""
-        cap = cv2.VideoCapture(video_path)
-        
-        ret, prev_frame = cap.read()
-        if not ret:
+        cap = open_video(video_path)
+        if cap is None:
             return {'error': 'Could not read video'}
         
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+        cap, prev_frame = read_first_frame(cap)
+        if prev_frame is None:
+            return {'error': 'Could not read video'}
+        
+        prev_gray = to_grayscale(prev_frame)
         
         lk_params = dict(
             winSize=(15, 15),
@@ -318,16 +350,17 @@ class LucasKanadeDetector:
         frame_idx = 1
         
         while True:
+            if frame_idx > max_frames:
+                break
             ret, frame = cap.read()
             if not ret:
                 break
                 
-            curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            curr_gray = to_grayscale(frame)
             
             p1, st, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, p0, None, **lk_params)
             
             if p1 is not None:
-                # Select good points
                 good_new = p1[st == 1]
                 good_old = p0[st == 1]
                 
@@ -340,9 +373,7 @@ class LucasKanadeDetector:
                     motion_pixels = len(good_new)
 
                     movement_score = mean_flow / 10.0
-                    
-                    # Lower threshold for better detection
-                    is_movement = movement_score > 0.1  # Reduced from 0.5 to 0.1
+                    is_movement = movement_score > 0.1  
                     
                     if is_movement:
                         object_frames.append(frame_idx)
@@ -357,13 +388,10 @@ class LucasKanadeDetector:
                         }
                         details_list.append(details)
                     
-                    # Create annotated frame
                     annotated_frame = frame.copy()
                     for i, (new, old) in enumerate(zip(good_new, good_old)):
                         a, b = new.ravel()
                         c, d = old.ravel()
-                        
-                        # Draw flow lines
                         annotated_frame = cv2.line(annotated_frame, (int(c), int(d)), (int(a), int(b)), (0, 255, 0), 2)
                         annotated_frame = cv2.circle(annotated_frame, (int(a), int(b)), 3, (0, 0, 255), -1)
                     
@@ -381,15 +409,7 @@ class LucasKanadeDetector:
         
         cap.release()
         
-        return {
-            'object_frames': object_frames,
-            'object_scores': object_scores,
-            'details_list': details_list,
-            'frames': frames,
-            'annotated_frames': annotated_frames,
-            'total_frames': frame_idx - 1,
-            'method': 'Lucas-Kanade Optical Flow'
-        }
+        return create_result_dict(object_frames, object_scores, frames, frame_idx - 1, details_list, annotated_frames, 'Lucas-Kanade Optical Flow')
 
 
 class ObjectMovementDetector:
@@ -403,10 +423,10 @@ class ObjectMovementDetector:
     def detect_objects(self, frame: np.ndarray) -> tuple[bool, float, dict, np.ndarray]:
 
         if self.prev_gray is None:
-            self.prev_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            self.prev_gray = to_grayscale(frame)
             return False, 0.0, {"error": "First frame"}, frame
         
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = to_grayscale(frame)
         
         flow = cv2.calcOpticalFlowFarneback(
             self.prev_gray, gray, None,
@@ -429,7 +449,6 @@ class ObjectMovementDetector:
             for x in range(0, frame.shape[1], step):
                 if motion_mask[y, x]:
                     fx, fy = flow[y, x]
-                    # Vektör çiz
                     cv2.arrowedLine(result_frame, (x, y), 
                                    (int(x+fx), int(y+fy)), (0, 255, 0), 1)
         
@@ -438,7 +457,7 @@ class ObjectMovementDetector:
         
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area > 100:  # Minimum alan
+            if area > 100:  
                 x, y, w, h = cv2.boundingRect(contour)
                 cv2.rectangle(result_frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
                 cv2.putText(result_frame, f"Object", (x, y-10), 
@@ -457,14 +476,16 @@ class ObjectMovementDetector:
         
         return has_movement, movement_score, details, result_frame
     
-    def detect_objects_video(self, video_path, max_frames=50):
-        cap = cv2.VideoCapture(video_path)
-        
-        ret, prev_frame = cap.read()
-        if not ret:
+    def detect_objects_video(self, video_path, max_frames=120):
+        cap = open_video(video_path)
+        if cap is None:
             return {'error': 'Could not read video'}
         
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+        cap, prev_frame = read_first_frame(cap)
+        if prev_frame is None:
+            return {'error': 'Could not read video'}
+        
+        prev_gray = to_grayscale(prev_frame)
         
         object_frames = []
         object_scores = []
@@ -481,7 +502,7 @@ class ObjectMovementDetector:
             if not ret:
                 break
                 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = to_grayscale(frame)
             
             flow = cv2.calcOpticalFlowFarneback(
                 prev_gray, gray, None,
@@ -507,7 +528,6 @@ class ObjectMovementDetector:
                 }
                 details_list.append(details)
             
-            # Create annotated frame
             annotated_frame = frame.copy()
             annotated_frame[motion_mask] = [0, 0, 255]  # Red for motion
             
@@ -526,15 +546,7 @@ class ObjectMovementDetector:
         
         cap.release()
         
-        return {
-            'object_frames': object_frames,
-            'object_scores': object_scores,
-            'details_list': details_list,
-            'frames': frames,
-            'annotated_frames': annotated_frames,
-            'total_frames': frame_idx - 1,
-            'method': 'Farneback Optical Flow'
-        }
+        return create_result_dict(object_frames, object_scores, frames, frame_idx - 1, details_list, annotated_frames, 'Farneback Optical Flow')
 
 
 class LucasKanadeAnalyzer:
@@ -544,31 +556,19 @@ class LucasKanadeAnalyzer:
         self.quality_level = quality_level
         self.min_distance = min_distance
         
-    def analyze_video(self, video_path, max_frames=50, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
+    def analyze_video(self, video_path, max_frames=120, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
+        cap = open_video(video_path)
+        if cap is None:
             return None
         
-        ret, prev_frame = cap.read()
-        if not ret:
-            cap.release()
+        cap, prev_frame = read_first_frame(cap)
+        if prev_frame is None:
             return None
         
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+        prev_gray = to_grayscale(prev_frame)
         frame_area = prev_gray.shape[0] * prev_gray.shape[1]
         
-        if frame_area > 1000000:
-            win_size = (25, 25)
-            max_level = 4
-            block_size = 11
-        elif frame_area > 500000:
-            win_size = (21, 21)
-            max_level = 3
-            block_size = 9
-        else:
-            win_size = (17, 17)
-            max_level = 2
-            block_size = 7
+        win_size, max_level, block_size = get_adaptive_lk_params(frame_area)
         
         lk_params = dict(
             winSize=win_size,
@@ -615,7 +615,7 @@ class LucasKanadeAnalyzer:
                 frame_count += 1
                 continue
             
-            curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            curr_gray = to_grayscale(frame)
             
             if p0 is None or len(p0) < self.max_corners // 3:
                 p0 = cv2.goodFeaturesToTrack(curr_gray, mask=None, **feature_params)
@@ -755,12 +755,7 @@ class LucasKanadeAnalyzer:
         
         cap.release()
         
-        return {
-            'object_frames': object_frames,
-            'object_scores': object_scores,
-            'frames': frames,
-            'total_frames': frame_count
-        }
+        return create_result_dict(object_frames, object_scores, frames, frame_count, result_type="object")
 
 
 class FarnebackAnalyzer:
@@ -770,17 +765,16 @@ class FarnebackAnalyzer:
         self.object_threshold = object_threshold
         self.flow_threshold = flow_threshold
         
-    def analyze_video(self, video_path, max_frames=50, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
+    def analyze_video(self, video_path, max_frames=120, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
+        cap = open_video(video_path)
+        if cap is None:
             return None
         
-        ret, prev_frame = cap.read()
-        if not ret:
-            cap.release()
+        cap, prev_frame = read_first_frame(cap)
+        if prev_frame is None:
             return None
         
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+        prev_gray = to_grayscale(prev_frame)
         
         object_frames = []
         object_scores = []
@@ -801,7 +795,7 @@ class FarnebackAnalyzer:
                 frame_count += 1
                 continue
             
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            gray = to_grayscale(frame)
             
             flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
             
@@ -847,13 +841,11 @@ class FarnebackAnalyzer:
             if enable_live_viz and live_viz_placeholder is not None:
                 annotated_frame = frame.copy()
                 
-                # Color the motion areas
                 if is_object_movement:
                     annotated_frame[motion_mask] = [0, 255, 0]  # Green for object movement
                 else:
                     annotated_frame[motion_mask] = [0, 0, 255]  # Red for camera movement
                 
-                # Draw flow vectors
                 step = 16
                 for y in range(0, frame.shape[0], step):
                     for x in range(0, frame.shape[1], step):
@@ -898,12 +890,7 @@ class FarnebackAnalyzer:
         
         cap.release()
         
-        return {
-            'object_frames': object_frames,
-            'object_scores': object_scores,
-            'frames': frames,
-            'total_frames': frame_count
-        }
+        return create_result_dict(object_frames, object_scores, frames, frame_count, result_type="object")
 
 
 
