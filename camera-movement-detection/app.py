@@ -1,6 +1,5 @@
 import plotly.graph_objects as go
 import pandas as pd
-import movement_detector
 import streamlit as st
 import cv2
 import numpy as np
@@ -9,11 +8,9 @@ import os
 import sys
 import importlib.util
 
-
+# Add current directory to path and import movement_detector
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-spec = importlib.util.spec_from_file_location("movement_detector", "movement_detector.py")
-movement_detector = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(movement_detector)
+from movement_detector import *
 
 def load_css():
     with open('style.css') as f:
@@ -298,7 +295,7 @@ with tab1:
                 if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
                     with st.spinner("🔍 Analyzing video..."):
                         if analysis_type in ["📹 Camera Only", "🔄 Both"]:
-                            detector = movement_detector.CameraMovementDetector(
+                            detector = CameraMovementDetector(
                                 method=params['camera_method'],
                                 threshold=params['threshold'],
                                 min_match_count=params['min_match_count']
@@ -319,7 +316,7 @@ with tab1:
                         if analysis_type in ["🎯 Object Only", "🔄 Both"]:
                             if params['object_method'] == "Lucas-Kanade":
                                 st.info("🎯 Running Lucas-Kanade object movement analysis...")
-                                analyzer = movement_detector.LucasKanadeAnalyzer(
+                                analyzer = LucasKanadeAnalyzer(
                                     max_corners=params['max_corners'],
                                     quality_level=params['quality_level'],
                                     min_distance=params['min_distance']
@@ -334,7 +331,7 @@ with tab1:
                                 st.success(f"✅ Lucas-Kanade completed: {len(object_results['object_frames'])} object movement frames detected")
                             else:
                                 st.info("🌊 Running Farneback object movement analysis...")
-                                analyzer = movement_detector.FarnebackAnalyzer(
+                                analyzer = FarnebackAnalyzer(
                                     object_threshold=params['object_threshold'],
                                     flow_threshold=params['flow_threshold']
                                 )
@@ -378,7 +375,7 @@ with tab1:
             with col1:
                 if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
                     with st.spinner("🔍 Analyzing image..."):
-                        detector = movement_detector.CameraMovementDetector(
+                        detector = CameraMovementDetector(
                             method=params['camera_method'],
                             threshold=params['threshold'],
                             min_match_count=params['min_match_count']
