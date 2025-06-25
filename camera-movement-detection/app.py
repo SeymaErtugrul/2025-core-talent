@@ -1,417 +1,454 @@
-import streamlit as st
-import numpy as np
-import cv2
+import streamlit as st, cv2, numpy as np, tempfile, os, sys, importlib.util
+import plotly.graph_objects as go, pandas as pd
 import movement_detector
-from PIL import Image
-import tempfile
-import os
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 
-st.markdown(
-    """
-    <style>
-    body {
-        background-color: #ffe4ec !important;
-        color: #8B008B !important;
-    }
-    .stApp {
-        background-color: #ffe4ec;
-        color: #8B008B;
-    }
-    h1, h2, h3, p, label, span {
-        color: #8B008B !important;
-    }
-    /* Analiz tab'ı için özel stil */
-    .stRadio > label {
-        color: #8B008B !important;
-    }
-    .stSlider > label {
-        color: #8B008B !important;
-    }
-    .stCheckbox > label {
-        color: #8B008B !important;
-    }
-    .stButton > button {
-        color: #8B008B !important;
-    }
-    .stFileUploader > label {
-        color: #8B008B !important;
-    }
-    /* Metric widget'ları için mor renk */
-    .stMetric > div > div > div {
-        color: #8B008B !important;
-    }
-    .stMetric > div > div > div > div {
-        color: #8B008B !important;
-    }
-    .stMetric > div > div > div > div > div {
-        color: #8B008B !important;
-    }
-    /* Daha spesifik metric stilleri */
-    .stMetric [data-testid="metric-container"] {
-        color: #8B008B !important;
-    }
-    .stMetric [data-testid="metric-container"] * {
-        color: #8B008B !important;
-    }
-    .stMetric label {
-        color: #8B008B !important;
-    }
-    .stMetric div {
-        color: #8B008B !important;
-    }
-    .stMetric span {
-        color: #8B008B !important;
-    }
-    .stMetric p {
-        color: #8B008B !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+spec = importlib.util.spec_from_file_location("movement_detector", "movement_detector.py")
+movement_detector = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(movement_detector)
 
-st.markdown(
-    "<h1 style='color:#8B008B; text-align:center;'>🎥 Movement Detection Demo 🎉</h1>",
-    unsafe_allow_html=True,
-)
-st.markdown(
-    "<div style='text-align:center; font-size:20px; color:#8B008B;'>"
-    "Detect camera movement with AI!<br>"
-    "Choose SIFT or ORB algorithm, play with parameters and see the results! 🚀"
-    "</div>",
-    unsafe_allow_html=True,
-)
+def load_css():
+    with open('style.css') as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
 
-tab1, tab2, tab3 = st.tabs(["ℹ️ About", "📹 Upload & Analysis", "📊 Results & Visualizations"])
-
-with tab1:
-    st.subheader("👩‍💻 About Developer")
-    st.info(
-        "This application was developed by me: **Şeyma**. "
-        "Hi, I mean just hire me! "
-        "For more information: [GitHub](https://github.com/SeymaErtugrul) or [LinkedIn](https://www.linkedin.com/in/seyma-ertugrul-18b1aa199/)"
-    )
-
-    st.subheader("ℹ️ About Application")
-    st.success(
-        "This application detects camera movement in the video file you upload. "
-        "You can choose SIFT or ORB algorithm and adjust threshold and other parameters. "
-        "Moving frames and scores are displayed on screen!"
-    )
-    
-    st.subheader("🔧 How It Works")
-    st.markdown("""
-    * UPLOAD VIDEO OR IMAGES
-    """)
-
-with tab2:
-    upload_option = st.radio("Choose Upload Type", ["📹 Video Upload", "🖼️ Image Upload"], horizontal=True)
-
-    if upload_option == "📹 Video Upload":
-        st.subheader("📹 Upload Video")
-        video_file = st.file_uploader("Select a video file", type=["mp4", "avi", "mov"])
-        image_file1 = None
-        image_file2 = None
-    else:
-        st.subheader("🖼️ Upload Images")
-        col1, col2 = st.columns(2)
-        with col1:
-            image_file1 = st.file_uploader("Select first image", type=["jpg", "jpeg", "png"])
-        with col2:
-            image_file2 = st.file_uploader("Select second image", type=["jpg", "jpeg", "png"])
-        video_file = None
-
-    st.subheader("⚙️ Algorithm and Parameters")
-    method = st.radio("Algorithm Selection", ["SIFT", "ORB"], horizontal=True)
-    threshold = st.slider("Movement Threshold", 0.1, 2.0, 0.5, 0.05)
-    min_match_count = st.slider(
-        "Minimum Match Count", 2, 20, 10 if method == "SIFT" else 4
-    )
-    max_frames = st.slider("Maximum Frames to Analyze", 10, 300, 50, 10)
-    debug = st.checkbox("Debug Mode", value=False)
-
-    start_analysis = st.button("🚦 Start Analysis")
-    if 'analysis_results' not in st.session_state:
-        st.session_state.analysis_results = None
-
-    if start_analysis:
-        if upload_option == "📹 Video Upload":
-            if video_file is None:
-                st.warning("Please upload a video file!")
-            else:
-                st.info("Processing video, please wait... ⏳")
-                tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-                tfile.write(video_file.read())
-                tfile.close()
-                cap = cv2.VideoCapture(tfile.name)
-                ret, prev_frame = cap.read()
-                if not ret:
-                    st.error("Could not read first frame from video.")
-                else:
-                    detector = movement_detector.CameraMovementDetector(
-                        method=method, threshold=threshold, min_match_count=min_match_count, debug=debug
-                    )
-                    frame_idx = 1
-                    movement_frames = []
-                    movement_scores = []
-                    details_list = []
-                    frames = [prev_frame]
-                    while True:
-                        if frame_idx > max_frames:
-                            break
-                        ret, frame = cap.read()
-                        if not ret:
-                            break
-                        is_movement, score, details = detector.detect(prev_frame, frame)
-                        if is_movement:
-                            movement_frames.append(frame_idx)
-                            movement_scores.append(score)
-                            details_list.append(details)
-                        frames.append(frame)
-                        prev_frame = frame
-                        frame_idx += 1
-                    cap.release()
-                    os.unlink(tfile.name)
-                    st.success(f"Analysis completed! 🚀 Movement detected in {len(movement_frames)} frames.")
-                    st.session_state.analysis_results = {
-                        'type': 'video',
-                        'movement_frames': movement_frames,
-                        'movement_scores': movement_scores,
-                        'details_list': details_list,
-                        'frames': frames,
-                        'total_frames': frame_idx - 1,
-                        'method': method,
-                        'threshold': threshold
-                    }
-                    
-                    if len(movement_frames) > 0:
-                        st.balloons()
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.markdown(
-                            f'<div style="text-align: center; padding: 10px; border: 2px solid #8B008B; border-radius: 10px; background-color: rgba(139, 0, 139, 0.1);">'
-                            f'<h3 style="color: #8B008B; margin: 0;">Total Frames</h3>'
-                            f'<p style="color: #8B008B; font-size: 24px; font-weight: bold; margin: 5px 0;">{frame_idx-1}</p>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
-                    with col2:
-                        st.markdown(
-                            f'<div style="text-align: center; padding: 10px; border: 2px solid #8B008B; border-radius: 10px; background-color: rgba(139, 0, 139, 0.1);">'
-                            f'<h3 style="color: #8B008B; margin: 0;">Movement Frames</h3>'
-                            f'<p style="color: #8B008B; font-size: 24px; font-weight: bold; margin: 5px 0;">{len(movement_frames)}</p>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
-                    with col3:
-                        st.markdown(
-                            f'<div style="text-align: center; padding: 10px; border: 2px solid #8B008B; border-radius: 10px; background-color: rgba(139, 0, 139, 0.1);">'
-                            f'<h3 style="color: #8B008B; margin: 0;">Movement Rate</h3>'
-                            f'<p style="color: #8B008B; font-size: 24px; font-weight: bold; margin: 5px 0;">{(len(movement_frames)/(frame_idx-1)*100):.1f}%</p>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
-                    with col4:
-                        avg_score = np.mean(movement_scores) if movement_scores else 0.0
-                        st.markdown(
-                            f'<div style="text-align: center; padding: 10px; border: 2px solid #8B008B; border-radius: 10px; background-color: rgba(139, 0, 139, 0.1);">'
-                            f'<h3 style="color: #8B008B; margin: 0;">Avg Score</h3>'
-                            f'<p style="color: #8B008B; font-size: 24px; font-weight: bold; margin: 5px 0;">{avg_score:.3f}</p>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
-                    
-                    st.info("📊 Check the 'Results & Visualizations' tab for detailed graphs and analysis!")
-        
-        else:  
-            if image_file1 is None or image_file2 is None:
-                st.warning("Please upload both images!")
-            else:
-                st.info("Processing images, please wait... ⏳")
-                image1 = Image.open(image_file1)
-                image2 = Image.open(image_file2)
-                frame1 = np.array(image1)
-                frame2 = np.array(image2)
-                
-                if frame1.shape[-1] == 4:
-                    frame1 = frame1[:, :, :3]
-                if frame2.shape[-1] == 4:
-                    frame2 = frame2[:, :, :3]
-        
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.image(image1, caption="First Image", use_column_width=True)
-                with col2:
-                    st.image(image2, caption="Second Image", use_column_width=True)
-            
-                detector = movement_detector.CameraMovementDetector(
-                    method=method, threshold=threshold, min_match_count=min_match_count, debug=debug
-                )
-                is_movement, score, details = detector.detect(frame1, frame2)
-                
-                st.success("Image analysis completed! 🚀")
-                if is_movement:
-                    st.balloons()
-
-                st.session_state.analysis_results = {
-                    'type': 'image',
-                    'is_movement': is_movement,
-                    'score': score,
-                    'details': details,
-                    'threshold': threshold,
-                    'method': method
-                }
-                
-                st.info("📊 Check the 'Results & Visualizations' tab for detailed graphs and analysis!")
-
-with tab3:
+def display_results_tab():
     st.subheader("📊 Analysis Results & Visualizations")
     
     if st.session_state.analysis_results is None:
-        st.info("Please run an analysis first in the 'Upload & Analysis' tab!")
+        st.info("🎬 Please run an analysis first in the 'Upload & Analysis' tab!")
+        return
+    
+    results = st.session_state.analysis_results
+    
+    if results['type'] == 'video':
+        display_video_results(results)
     else:
-        results = st.session_state.analysis_results
-        
-        if results['type'] == 'video':
-            movement_frames = results['movement_frames']
-            movement_scores = results['movement_scores']
-            details_list = results['details_list']
-            frames = results['frames']
-            total_frames = results['total_frames']
-            
-            if len(movement_frames) > 0:
-                all_scores = []
-                all_frames = []
-                for i in range(1, total_frames + 1):
-                    if i in movement_frames:
-                        idx = movement_frames.index(i)
-                        all_scores.append(movement_scores[idx])
-                    else:
-                        all_scores.append(0.0)
-                    all_frames.append(i)
-                
-                fig1 = go.Figure()
-                fig1.add_trace(go.Scatter(
-                    x=all_frames,
-                    y=all_scores,
-                    mode='lines+markers',
-                    name='Movement Score',
-                    line=dict(color='#8B008B', width=2),
-                    marker=dict(size=6)
-                ))
-                fig1.update_layout(
-                    title='Movement Scores Over Time',
-                    xaxis_title='Frame Number',
-                    yaxis_title='Movement Score',
-                    template='plotly_white',
-                    height=400
-                )
-                st.plotly_chart(fig1, use_container_width=True)
-                if len(movement_scores) > 1:
-                    fig2 = px.histogram(
-                        x=movement_scores,
-                        nbins=10,
-                        title='Distribution of Movement Scores',
-                        labels={'x': 'Movement Score', 'y': 'Frequency'},
-                        color_discrete_sequence=['#8B008B']
-                    )
-                    fig2.update_layout(height=400)
-                    st.plotly_chart(fig2, use_container_width=True)
-                
-                if len(details_list) > 0:
-                    translations = [details.get('translation', 0) for details in details_list]
-                    determinants = [details.get('determinant', 0) for details in details_list]
-                    
-                    fig3 = go.Figure()
-                    fig3.add_trace(go.Scatter(
-                        x=translations,
-                        y=determinants,
-                        mode='markers',
-                        marker=dict(
-                            size=10,
-                            color=movement_scores,
-                            colorscale='Viridis',
-                            showscale=True,
-                            colorbar=dict(title="Movement Score")
-                        ),
-                        text=[f"Frame {frame}" for frame in movement_frames],
-                        hovertemplate='Frame: %{text}<br>Translation: %{x:.3f}<br>Determinant: %{y:.3f}<extra></extra>'
-                    ))
-                    fig3.update_layout(
-                        title='Translation vs Determinant Analysis',
-                        xaxis_title='Translation',
-                        yaxis_title='Determinant',
-                        template='plotly_white',
-                        height=400
-                    )
-                    st.plotly_chart(fig3, use_container_width=True)
+        display_image_results(results)
 
-                st.subheader("🎬 Frames with Detected Movement")
-                for idx, frame_idx in enumerate(movement_frames):
-                    st.markdown(
-                        f"<div style='border:2px solid #8B008B; border-radius:10px; padding:10px; margin-bottom:10px;'>"
-                        f"<b>Movement Detected at Frame:</b> {frame_idx} <br>"
-                        f"<b>Score:</b> {movement_scores[idx]:.3f} <br>"
-                        f"<b>Details:</b> {details_list[idx]}"
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.image(cv2.cvtColor(frames[frame_idx], cv2.COLOR_BGR2RGB), use_column_width=False, width=300)
-            else:
-                st.info("No movement detected.")
+def display_video_results(results):
+    st.subheader("🎥 Video Analysis Results")
+    
+    if results['analysis_type'] in ["📹 Camera Only", "🔄 Both"] and results['movement_frames']:
+        display_camera_results(results['movement_frames'], results['movement_scores'], results['details_list'], results['total_frames'])
+    
+    if results['analysis_type'] in ["🎯 Object Only", "🔄 Both"] and results['object_results']:
+        display_object_results(results['object_results'])
+
+def display_camera_results(movement_frames, movement_scores, details_list, total_frames):
+    st.subheader("📹 Camera Movement Results")
+    
+    if len(movement_frames) > 0:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("🎬 Movement Frames", len(movement_frames))
+        with col2:
+            st.metric("📊 Detection Rate", f"{(len(movement_frames)/total_frames)*100:.1f}%")
+        with col3:
+            st.metric("📈 Average Score", f"{np.mean(movement_scores):.3f}")
+        with col4:
+            st.metric("🏆 Max Score", f"{np.max(movement_scores):.3f}")
+        
+        st.subheader("📋 Movement Frame Details")
+        movement_data = []
+        for i, (frame, score) in enumerate(zip(movement_frames, movement_scores)):
+            details = details_list[i] if i < len(details_list) else {}
+            movement_data.append({
+                "🎬 Frame": frame,
+                "📊 Score": f"{score:.3f}",
+                "🔄 Translation": f"{details.get('translation', 0):.3f}",
+                "📐 Determinant": f"{details.get('determinant', 0):.3f}",
+                "🆔 Identity Diff": f"{details.get('identity_diff', 0):.3f}",
+                "🔗 Matches": details.get('num_matches', 0),
+                "✅ Inlier Ratio": f"{details.get('inlier_ratio', 0):.3f}"
+            })
+        
+        df = pd.DataFrame(movement_data)
+        st.dataframe(df, use_container_width=True)
+        
+        st.subheader("📈 Movement Score Timeline")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=movement_frames,
+            y=movement_scores,
+            mode='lines+markers',
+            name='Movement Score',
+            line=dict(color='#FF6B6B', width=2),
+            marker=dict(size=6, color='#FF6B6B')
+        ))
+        fig.update_layout(
+            title="📹 Camera Movement Score Over Time",
+            xaxis_title="🎬 Frame Number",
+            yaxis_title="📊 Movement Score",
+            height=400,
+            showlegend=False
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("😴 No camera movement detected.")
+
+def display_object_results(object_results):
+    st.subheader("🎯 Object Movement Results")
+    
+    object_frames = object_results.get('object_frames', [])
+    object_scores = object_results.get('object_scores', [])
+    total_frames = object_results.get('total_frames', 0)
+    
+    if len(object_frames) > 0:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("🎬 Movement Frames", len(object_frames))
+        with col2:
+            st.metric("📊 Detection Rate", f"{(len(object_frames)/total_frames)*100:.1f}%")
+        with col3:
+            st.metric("📈 Average Score", f"{np.mean(object_scores):.3f}")
+        with col4:
+            st.metric("🏆 Max Score", f"{np.max(object_scores):.3f}")
+        
+        st.subheader("📋 Object Movement Frame Details")
+        object_data = []
+        for frame, score in zip(object_frames, object_scores):
+            object_data.append({
+                "🎬 Frame": frame,
+                "📊 Score": f"{score:.3f}",
+                "🎯 Movement Type": "Object Movement"
+            })
+        
+        df = pd.DataFrame(object_data)
+        st.dataframe(df, use_container_width=True)
+        
+        st.subheader("📈 Object Movement Score Timeline")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=object_frames,
+            y=object_scores,
+            mode='lines+markers',
+            name='Object Movement Score',
+            line=dict(color='#4ECDC4', width=2),
+            marker=dict(size=6, color='#4ECDC4')
+        ))
+        fig.update_layout(
+            title="🎯 Object Movement Score Over Time",
+            xaxis_title="🎬 Frame Number",
+            yaxis_title="📊 Movement Score",
+            height=400,
+            showlegend=False
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("😴 No object movement detected.")
+
+def display_image_results(results):
+    st.subheader("🖼️ Image Analysis Results")
+    
+    is_movement = results.get('is_movement', False)
+    score = results.get('score', 0.0)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("🎯 Movement Detected", "✅ Yes" if is_movement else "❌ No")
+    with col2:
+        st.metric("📊 Score", f"{score:.3f}")
+    
+    if is_movement:
+        st.success(f"🎉 Movement detected! Score: {score:.3f}")
+    else:
+        st.info(f"😴 No movement detected. Score: {score:.3f}")
+
+def setup_sidebar():
+    st.sidebar.header("⚙️ Settings")
+    
+    analysis_type = st.sidebar.radio(
+        "🎯 Analysis Type", 
+        ["📹 Camera Only", "🎯 Object Only", "🔄 Both"],
+        help="Select analysis type",
+        key="analysis_type"
+    )
+    
+    params = {
+        'camera_method': "ORB",
+        'object_method': "Lucas-Kanade",
+        'threshold': 0.5,
+        'min_match_count': 4,
+        'camera_max_frames': 50,
+        'debug': False,
+        'object_max_frames': 50,
+        'max_corners': 150,
+        'quality_level': 0.3,
+        'min_distance': 7,
+        'flow_threshold': 0.5,
+        'object_threshold': 0.1,
+        'store_frames': True,
+        'frame_skip': 1,
+        'enable_live_viz': True
+    }
+    
+    if analysis_type in ["📹 Camera Only", "🔄 Both"]:
+        st.sidebar.subheader("📹 Camera")
+        params['camera_method'] = st.sidebar.radio("🔧 Algorithm", ["ORB", "SIFT"], key="camera_algorithm")
+        params['threshold'] = st.sidebar.slider("🎯 Threshold", 0.1, 2.0, 0.5, 0.05, key="camera_threshold")
+
+    if analysis_type in ["🎯 Object Only", "🔄 Both"]:
+        st.sidebar.subheader("🎯 Object")
+        params['object_method'] = st.sidebar.radio("🔧 Algorithm", ["Lucas-Kanade", "Farneback"], key="object_algorithm")
+        
+        if params['object_method'] == "Lucas-Kanade":
+            st.sidebar.caption("🎯 Lucas-Kanade: Detects object movement by tracking corner points")
+            params['max_corners'] = st.sidebar.slider("🔢 Max Corners", 20, 200, 150, 10, key="max_corners", 
+                                                    help="Number of corner points to track (lower = faster, higher = more accurate)")
+            params['quality_level'] = st.sidebar.slider("⭐ Quality Level", 0.01, 0.5, 0.3, 0.01, key="quality_level",
+                                                       help="Minimum quality of corner points (lower = more points, higher = better quality)")
+            params['min_distance'] = st.sidebar.slider("📏 Min Distance", 3, 15, 7, 1, key="min_distance",
+                                                      help="Minimum distance between corner points")
+        else:
+            st.sidebar.caption("🌊 Farneback: Detects object movement using dense optical flow")
+            params['object_threshold'] = st.sidebar.slider("🎯 Object Threshold", 0.05, 1.0, 0.3, 0.05, key="object_threshold",
+                                                          help="Threshold for object movement detection (lower = more sensitive)")
+            params['flow_threshold'] = st.sidebar.slider("🌊 Flow Threshold", 0.05, 1.0, 0.3, 0.05, key="flow_threshold",
+                                                        help="Threshold for optical flow magnitude (lower = more sensitive)")
+        
+        st.sidebar.info("""
+        **🎯 Object vs Camera Movement:**
+        - 🟢 Green: Object movement detected
+        - 🔴 Red: Camera movement or no movement
+        - 📉 Lower thresholds = more sensitive detection
+        - ⚙️ Adjust parameters for your specific video
+        """)
+
+    st.sidebar.subheader("⚡ Performance")
+    if analysis_type in ["📹 Camera Only", "🔄 Both"]:
+        params['camera_max_frames'] = st.sidebar.slider(
+            "🎬 Camera Max Frames", 10, 300, 50, 10, key="camera_max_frames",
+            help="Maximum number of frames to analyze for camera movement. Lower = faster analysis."
+        )
+    if analysis_type in ["🎯 Object Only", "🔄 Both"]:
+        params['object_max_frames'] = st.sidebar.slider(
+            "🎬 Object Max Frames", 10, 300, 50, 10, key="object_max_frames",
+            help="Maximum number of frames to analyze for object movement. Lower = faster analysis."
+        )
+    params['frame_skip'] = st.sidebar.slider("⏭️ Frame Skip", 1, 5, 1, 1, key="frame_skip")
+    params['enable_live_viz'] = st.sidebar.checkbox("👁️ Live Visualization", value=True, key="live_viz")
+    
+    return analysis_type, params
+
+st.set_page_config(
+    page_title="Movement Detection",
+    page_icon="🎥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = None
+
+load_css()
+
+st.markdown("<h1 style='color:#8B008B; text-align:center;'>🎥 Movement Detection Demo 🎉</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='text-align:center; font-size:20px; color:#8B008B;'>"
+    "Detect camera and object movement in videos and images using computer vision techniques"
+    "</div>",
+    unsafe_allow_html=True
+)
+
+tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload & Analysis", "📊 Results", "👩‍💻 About Developer", "🎥 About Application"])
+
+with tab1:
+    st.subheader("📤 Upload & Analysis")
+    
+    analysis_type, params = setup_sidebar()
+    
+    upload_type = st.selectbox(
+        "📁 Choose Upload Type",
+        ["Video File", "Image File"],
+        help="Select the type of file to upload for analysis"
+    )
+    
+    uploaded_file = st.file_uploader(
+        "📁 Upload your file",
+        type=['mp4', 'avi', 'mov', 'jpg', 'jpeg', 'png'],
+        help="Upload a video or image file for movement analysis"
+    )
+    
+    if uploaded_file is not None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{uploaded_file.name.split(".")[-1]}') as tmp_file:
+            tmp_file.write(uploaded_file.getvalue())
+            file_path = tmp_file.name
+        
+        if upload_type == "Video File":
+            video_col1, video_col2 = st.columns([1, 1])
+            
+            with video_col1:
+                st.subheader("📹 Original Video")
+                st.video(uploaded_file, width=350)
+            
+            with video_col2:
+                st.subheader("🎯 Live Analysis")
+                live_viz_placeholder = st.empty()
+            
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
+                    with st.spinner("🔍 Analyzing video..."):
+                        if analysis_type in ["📹 Camera Only", "🔄 Both"]:
+                            detector = movement_detector.CameraMovementDetector(
+                                method=params['camera_method'],
+                                threshold=params['threshold'],
+                                min_match_count=params['min_match_count']
+                            )
+                            
+                            st.info("📹 Running camera movement analysis...")
+                            camera_results = detector.analyze_video(
+                                file_path, 
+                                params['camera_max_frames'], 
+                                params['frame_skip'],
+                                enable_live_viz=params['enable_live_viz'],
+                                live_viz_placeholder=live_viz_placeholder
+                            )
+                            st.success(f"✅ Camera movement analysis completed: {len(camera_results['movement_frames'])} movement frames detected")
+                        else:
+                            camera_results = None
+                        
+                        if analysis_type in ["🎯 Object Only", "🔄 Both"]:
+                            if params['object_method'] == "Lucas-Kanade":
+                                st.info("🎯 Running Lucas-Kanade object movement analysis...")
+                                analyzer = movement_detector.LucasKanadeAnalyzer(
+                                    max_corners=params['max_corners'],
+                                    quality_level=params['quality_level'],
+                                    min_distance=params['min_distance']
+                                )
+                                object_results = analyzer.analyze_video(
+                                    file_path, 
+                                    params['object_max_frames'], 
+                                    params['frame_skip'],
+                                    enable_live_viz=params['enable_live_viz'],
+                                    live_viz_placeholder=live_viz_placeholder
+                                )
+                                st.success(f"✅ Lucas-Kanade completed: {len(object_results['object_frames'])} object movement frames detected")
+                            else:
+                                st.info("🌊 Running Farneback object movement analysis...")
+                                analyzer = movement_detector.FarnebackAnalyzer(
+                                    object_threshold=params['object_threshold'],
+                                    flow_threshold=params['flow_threshold']
+                                )
+                                object_results = analyzer.analyze_video(
+                                    file_path, 
+                                    params['object_max_frames'], 
+                                    params['frame_skip'],
+                                    enable_live_viz=params['enable_live_viz'],
+                                    live_viz_placeholder=live_viz_placeholder
+                                )
+                                st.success(f"✅ Farneback completed: {len(object_results['object_frames'])} object movement frames detected")
+                        else:
+                            object_results = None
+                        
+                        st.session_state.analysis_results = {
+                            'type': 'video',
+                            'movement_frames': camera_results['movement_frames'] if camera_results else [],
+                            'movement_scores': camera_results['movement_scores'] if camera_results else [],
+                            'details_list': camera_results['details_list'] if camera_results else [],
+                            'frames': camera_results['frames'] if camera_results else [],
+                            'total_frames': camera_results['total_frames'] if camera_results else 0,
+                            'object_results': object_results,
+                            'analysis_type': analysis_type
+                        }
+                        
+                        st.success("🎉 Analysis completed! Check the 'Results' tab for detailed results.")
+            
+            with col2:
+                st.info("""
+                **🎥 Video Analysis Features:**
+                - 📹 Camera movement detection using SIFT/ORB
+                - 🎯 Object movement detection using Lucas-Kanade/Farneback
+                - 👁️ Real-time visualization
+                - ⚡ Performance optimization with frame skipping
+                """)
         
         else:
-            is_movement = results['is_movement']
-            score = results['score']
-            details = results['details']
-            threshold = results['threshold']
-            fig_gauge = go.Figure(go.Indicator(
-                mode = "gauge+number+delta",
-                value = score,
-                domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Movement Score"},
-                delta = {'reference': threshold},
-                gauge = {
-                    'axis': {'range': [None, max(score * 1.5, threshold * 2)]},
-                    'bar': {'color': "#8B008B"},
-                    'steps': [
-                        {'range': [0, threshold], 'color': "lightgray"},
-                        {'range': [threshold, max(score * 1.5, threshold * 2)], 'color': "lightcoral"}
-                    ],
-                    'threshold': {
-                        'line': {'color': "red", 'width': 4},
-                        'thickness': 0.75,
-                        'value': threshold
-                    }
-                }
-            ))
-            fig_gauge.update_layout(height=400)
-            st.plotly_chart(fig_gauge, use_container_width=True)
-    
-            if 'translation' in details and 'determinant' in details and 'identity_diff' in details:
-                detail_names = ['Translation', 'Determinant', 'Identity Diff']
-                detail_values = [details['translation'], abs(details['determinant']), details['identity_diff']]
-                
-                fig_bar = go.Figure(data=[
-                    go.Bar(x=detail_names, y=detail_values, marker_color='#8B008B')
-                ])
-                fig_bar.update_layout(
-                    title='Movement Components Analysis',
-                    xaxis_title='Component',
-                    yaxis_title='Value',
-                    height=400
-                )
-                st.plotly_chart(fig_bar, use_container_width=True)
+            st.image(uploaded_file, caption="📸 Uploaded Image")
+            
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
+                    with st.spinner("🔍 Analyzing image..."):
+                        detector = movement_detector.CameraMovementDetector(
+                            method=params['camera_method'],
+                            threshold=params['threshold'],
+                            min_match_count=params['min_match_count']
+                        )
+                        
+                        image = cv2.imread(file_path)
+                        is_movement, score, details = detector.detect(image, image)
+                        
+                        st.session_state.analysis_results = {
+                            'type': 'image',
+                            'is_movement': is_movement,
+                            'score': score,
+                            'details': details
+                        }
+                        
+                        st.success("🎉 Analysis completed! Check the 'Results' tab for detailed results.")
+            
+            with col2:
+                st.info("""
+                **🖼️ Image Analysis Features:**
+                - 🎯 Single image movement detection
+                - 🔍 Feature-based analysis
+                - 📊 Detailed movement scoring
+                """)
+        
+        try:
+            os.unlink(file_path)
+        except:
+            pass
 
-            st.markdown(
-                f"<div style='border:2px solid #8B008B; border-radius:10px; padding:10px; margin-bottom:10px;'>"
-                f"<b>Movement Detected:</b> {is_movement} <br>"
-                f"<b>Score:</b> {score:.3f} <br>"
-                f"<b>Details:</b> {details}"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+with tab2:
+    display_results_tab()
+
+with tab3:
+    st.subheader("👩‍💻 About Developer")
+    
+    st.markdown("""
+    **👩‍💻 Şeyma Ertuğrul**
+    
+    This application is developed by me: Şeyma 💖 Hi, I mean just hire me!
+    """) 
+    
+    st.markdown("**🔗 Connect with me:**")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("[🐙 GitHub](https://github.com/SeymaErtugrul)")
+        st.markdown("[💼 LinkedIn](https://www.linkedin.com/in/seyma-ertugrul-18b1aa199/)")
+    
+        
+
+with tab4:
+    st.subheader("🎥 About Application")
+    
+    st.subheader("🎥 Movement Detection Demo")
+    st.markdown("""
+    This application demonstrates computer vision techniques for detecting movement in videos and images.
+    
+    **🎯 Features:**
+    - **📹 Camera Movement Detection**: Uses SIFT/ORB algorithms to detect camera movement
+    - **🎯 Object Movement Detection**: Uses Lucas-Kanade/Farneback optical flow for object movement
+    - **👁️ Real-time Visualization**: See analysis results as they're processed
+    - **⚡ Performance Optimization**: Frame skipping and memory management
+    - **🔄 Multiple Analysis Types**: Choose camera-only, object-only, or both analyses
+    
+    **🔧 Technologies Used:**
+    - OpenCV for computer vision
+    - Streamlit for web interface
+    - Plotly for data visualization
+    - NumPy for numerical computations
+    
+    **📖 How to Use:**
+    1. 📤 Upload a video or image file
+    2. ⚙️ Configure analysis parameters in the sidebar
+    3. 🚀 Click "Start Analysis"
+    4. 📊 View results in the Results tab
+    
+    **💡 Tips:**
+    - 📉 Lower thresholds for more sensitive detection
+    - ⏭️ Use frame skipping for faster processing
+    - 👁️ Enable live visualization for real-time feedback
+    """)

@@ -1,0 +1,128 @@
+body {
+    background-color: #ffe4ec !important;
+    color: #8B008B !important;
+}
+.stApp {
+    background-color: #ffe4ec !important;
+    color: #8B008B;
+}
+h1, h2, h3, p, label, span {
+    color: #8B008B !important;
+}
+/* Analiz tab'ı için özel stil */
+.stRadio > label {
+    color: #8B008B !important;
+}
+.stSlider > label {
+    color: #8B008B !important;
+}
+.stCheckbox > label {
+    color: #8B008B !important;
+}
+.stButton > button {
+    color: #8B008B !important;
+}
+.stFileUploader > label {
+    color: #8B008B !important;
+}
+/* Metric widget'ları için mor renk */
+.stMetric > div > div > div {
+    color: #8B008B !important;
+}
+.stMetric > div > div > div > div {
+    color: #8B008B !important;
+}
+.stMetric > div > div > div > div > div {
+    color: #8B008B !important;
+}
+/* Daha spesifik metric stilleri */
+.stMetric [data-testid="metric-container"] {
+    color: #8B008B !important;
+}
+.stMetric [data-testid="metric-container"] * {
+    color: #8B008B !important;
+}
+.stMetric label {
+    color: #8B008B !important;
+}
+.stMetric div {
+    color: #8B008B !important;
+}
+.stMetric span {
+    color: #8B008B !important;
+}
+.stMetric p {
+    color: #8B008B !important;
+}
+
+/* Sidebar styling */
+div.st-emotion-cache-6qob1r.eczjsme3,
+div.st-emotion-cache-1d391kg.eczjsme3,
+div.st-emotion-cache-1lcbmhc.eczjsme3,
+div.st-emotion-cache-1v0mbdj.eczjsme3 {
+    background-color: #fce4ec !important;
+    color: #8B008B !important;
+}
+
+/* Sidebar content */
+[data-testid="stSidebarContent"] {
+    color: white !important;
+    background-color: pink !important;
+}
+
+/* Buttons and inputs */
+.stButton > button { background-color: #FF69B4 !important; color: white !important; }
+.stSelectbox > div > div { background-color: #fff0f5 !important; }
+.stFileUploader > div { background-color: #fff0f5 !important; }
+
+/* Selectbox text readability */
+.stSelectbox > div > div > div { color: #8B008B !important; }
+.stSelectbox > div > div > div > div { color: #8B008B !important; }
+.stSelectbox > div > div > div > div > div { color: #8B008B !important; }
+
+/* Tabs - Fixed styling without color change */
+.stTabs [data-baseweb="tab-list"] { 
+    background-color: #fce4ec !important; 
+    border-radius: 8px !important;
+}
+.stTabs [data-baseweb="tab"] { 
+    background-color: #f8bbd9 !important; 
+    color: #8B008B !important;
+    border-radius: 6px !important;
+    margin: 2px !important;
+}
+.stTabs [aria-selected="true"] { 
+    background-color: #f8bbd9 !important; 
+    color: #8B008B !important;
+    font-weight: bold !important;
+}
+
+/* Messages */
+.stAlert, .stSuccess { background-color: #f3e5f5 !important; color: #4a148c !important; }
+.stWarning { background-color: #fff3e0 !important; color: #e65100 !important; }
+.stError { background-color: #ffebee !important; color: #c62828 !important; }
+
+/* Make white text purple for better readability */
+* {
+    color: #8B008B !important;
+}
+
+/* Specific overrides for white text */
+.stMarkdown, .stText, .stDataFrame, .stPlotlyChart {
+    color: #8B008B !important;
+}
+
+/* Dataframe text */
+.stDataFrame * {
+    color: #8B008B !important;
+}
+
+/* Plotly chart text */
+.stPlotlyChart * {
+    color: #8B008B !important;
+}
+
+/* Any remaining white text */
+p, span, div, label, h1, h2, h3, h4, h5, h6 {
+    color: #8B008B !important;
+} 
