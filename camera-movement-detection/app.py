@@ -508,10 +508,8 @@ with tab3:
     st.markdown("**🔗 Connect with me:**")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown('<a href="https://github.com/SeymaErtugrul" target="_blank" style="text-decoration:none;">🐙 GitHub</a>', unsafe_allow_html=True)
-        st.markdown('<a href="https://www.linkedin.com/in/seyma-ertugrul-18b1aa199/" target="_blank" style="text-decoration:none;">💼 LinkedIn</a>', unsafe_allow_html=True)
-    
-        
+        st.markdown('GitHub: https://github.com/SeymaErtugrul')
+        st.markdown('LinkedIn: https://www.linkedin.com/in/seyma-ertugrul-18b1aa199/')
 
 with tab4:
     st.subheader("🎥 About Application")
