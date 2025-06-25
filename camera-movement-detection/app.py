@@ -1,6 +1,14 @@
-import streamlit as st, cv2, numpy as np, tempfile, os, sys, importlib.util
-import plotly.graph_objects as go, pandas as pd
+import plotly.graph_objects as go
+import pandas as pd
 import movement_detector
+import streamlit as st
+import cv2
+import numpy as np
+import tempfile
+import os
+import sys
+import importlib.util
+
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 spec = importlib.util.spec_from_file_location("movement_detector", "movement_detector.py")
