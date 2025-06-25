@@ -2,3 +2,5 @@ streamlit
 opencv-python
 numpy
 Pillow
+plotly
+pandas
