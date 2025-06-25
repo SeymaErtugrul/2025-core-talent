@@ -249,6 +249,68 @@ st.set_page_config(
 if 'analysis_results' not in st.session_state:
     st.session_state.analysis_results = None
 
+# --- Tutorial/Tour State ---
+if 'show_tour' not in st.session_state:
+    st.session_state.show_tour = True
+if 'tour_step' not in st.session_state:
+    st.session_state.tour_step = 0
+
+tour_steps = [
+    {
+        'title': '👋 Welcome!',
+        'content': 'With this app, you can detect movement in videos or between two images. Continue the tour to get started!'
+    },
+    {
+        'title': '1️⃣ Select Analysis Type',
+        'content': 'In the "Upload & Analysis" tab, first select the analysis type: Video or Image Comparison.'
+    },
+    {
+        'title': '2️⃣ Upload Your File(s)',
+        'content': 'Depending on your choice, upload a video or two images.'
+    },
+    {
+        'title': '3️⃣ Configure the Settings',
+        'content': 'Adjust the settings in the sidebar as needed.'
+    },
+    {
+        'title': '4️⃣ Start the Analysis',
+        'content': 'Click the Start Analysis button and view the results in the Results tab.'
+    },
+    {
+        'title': '🎉 You Are Ready!',
+        'content': 'You can now start using the application!'
+    },
+]
+
+def show_tour_box():
+    step = st.session_state.tour_step
+    st.markdown(f"""
+    <div style='background-color:#f3e6fa; padding:18px; border-radius:10px; margin-bottom:20px;'>
+        <b>{tour_steps[step]['title']}</b><br>
+        {tour_steps[step]['content']}
+        <br><br>
+        <div style='display:flex; gap:10px;'>
+    """, unsafe_allow_html=True)
+    col1, col2 = st.columns([1,1])
+    with col1:
+        if step < len(tour_steps) - 1:
+            if st.button('Next', key=f'tour_next_{step}'):
+                st.session_state.tour_step += 1
+                st.rerun()
+        else:
+            if st.button('Finish', key='tour_finish'):
+                st.session_state.show_tour = False
+                st.rerun()
+    with col2:
+        if st.button('Close', key=f'tour_close_{step}'):
+            st.session_state.show_tour = False
+            st.rerun()
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+# --- Show Tour at the Top ---
+if st.session_state.show_tour:
+    show_tour_box()
+
 load_css()
 
 st.markdown("<h1 style='color:#8B008B; text-align:center;'>🎥 Movement Detection Demo 🎉</h1>", unsafe_allow_html=True)
@@ -263,40 +325,104 @@ tab1, tab2, tab3, tab4 = st.tabs(["📤 Upload & Analysis", "📊 Results", "�
 
 with tab1:
     st.subheader("📤 Upload & Analysis")
-    
     analysis_type, params = setup_sidebar()
-    
+
     upload_type = st.selectbox(
         "📁 Choose Upload Type",
-        ["Video File", "Image File"],
+        ["Video File", "Image Comparison"],
         help="Select the type of file to upload for analysis"
     )
-    
-    uploaded_file = st.file_uploader(
-        "📁 Upload your file",
-        type=['mp4', 'avi', 'mov', 'jpg', 'jpeg', 'png'],
-        help="Upload a video or image file for movement analysis"
-    )
-    
-    if uploaded_file is not None:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{uploaded_file.name.split(".")[-1]}') as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
-            file_path = tmp_file.name
-        
-        if upload_type == "Video File":
+
+    if upload_type == "Image Comparison":
+        st.subheader("🖼️ Image Comparison")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("📸 First Image")
+            uploaded_file1 = st.file_uploader(
+                "📁 Upload first image",
+                type=['jpg', 'jpeg', 'png'],
+                key="image1",
+                help="Upload the first image for comparison"
+            )
+            if uploaded_file1 is not None:
+                st.image(uploaded_file1, caption="📸 First Image", use_container_width=True)
+        with col2:
+            st.subheader("📸 Second Image")
+            uploaded_file2 = st.file_uploader(
+                "📁 Upload second image",
+                type=['jpg', 'jpeg', 'png'],
+                key="image2",
+                help="Upload the second image for comparison"
+            )
+            if uploaded_file2 is not None:
+                st.image(uploaded_file2, caption="📸 Second Image", use_container_width=True)
+        if uploaded_file1 is not None and uploaded_file2 is not None:
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                if st.button("🚀 Start Image Analysis", type="primary", use_container_width=True):
+                    with st.spinner("🔍 Analyzing images..."):
+                        detector = CameraMovementDetector(
+                            method=params['camera_method'],
+                            threshold=params['threshold'],
+                            min_match_count=params['min_match_count']
+                        )
+                        # Save both images to temporary files
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{uploaded_file1.name.split(".")[-1]}') as tmp_file1:
+                            tmp_file1.write(uploaded_file1.getvalue())
+                            file_path1 = tmp_file1.name
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{uploaded_file2.name.split(".")[-1]}') as tmp_file2:
+                            tmp_file2.write(uploaded_file2.getvalue())
+                            file_path2 = tmp_file2.name
+                        # Load images and detect movement
+                        image1 = cv2.imread(file_path1)
+                        image2 = cv2.imread(file_path2)
+                        is_movement, score, details = detector.detect(image1, image2)
+                        st.session_state.analysis_results = {
+                            'type': 'image',
+                            'is_movement': is_movement,
+                            'score': score,
+                            'details': details
+                        }
+                        # Clean up temporary files
+                        try:
+                            os.unlink(file_path1)
+                            os.unlink(file_path2)
+                        except:
+                            pass
+                        st.success("🎉 Analysis completed! Check the 'Results' tab for detailed results.")
+            with col2:
+                st.info("""
+                **🖼️ Image Comparison Features:**
+                - 🎯 Compare two images for movement detection
+                - 🔍 Feature-based analysis using SIFT/ORB
+                - 📊 Detailed movement scoring
+                - 🔄 Camera movement detection between frames
+                """)
+        elif uploaded_file1 is not None or uploaded_file2 is not None:
+            st.warning("⚠️ Please upload both images for comparison.")
+
+    elif upload_type == "Video File":
+        st.subheader("📹 Video Analysis")
+        uploaded_file = st.file_uploader(
+            "📁 Upload your video file",
+            type=['mp4', 'avi', 'mov'],
+            key="video_file",
+            help="Upload a video file for movement analysis"
+        )
+        if uploaded_file is not None:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{uploaded_file.name.split(".")[-1]}') as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                file_path = tmp_file.name
             video_col1, video_col2 = st.columns([1, 1])
-            
             with video_col1:
                 st.subheader("📹 Original Video")
                 st.video(uploaded_file, width=350)
-            
             with video_col2:
                 st.subheader("🎯 Live Analysis")
                 live_viz_placeholder = st.empty()
-            
             col1, col2 = st.columns([1, 2])
             with col1:
-                if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
+                if st.button("🚀 Start Video Analysis", type="primary", use_container_width=True):
                     with st.spinner("🔍 Analyzing video..."):
                         if analysis_type in ["📹 Camera Only", "🔄 Both"]:
                             detector = CameraMovementDetector(
@@ -304,7 +430,6 @@ with tab1:
                                 threshold=params['threshold'],
                                 min_match_count=params['min_match_count']
                             )
-                            
                             st.info("📹 Running camera movement analysis...")
                             camera_results = detector.analyze_video(
                                 file_path, 
@@ -316,7 +441,6 @@ with tab1:
                             st.success(f"✅ Camera movement analysis completed: {len(camera_results['movement_frames'])} movement frames detected")
                         else:
                             camera_results = None
-                        
                         if analysis_type in ["🎯 Object Only", "🔄 Both"]:
                             if params['object_method'] == "Lucas-Kanade":
                                 st.info("🎯 Running Lucas-Kanade object movement analysis...")
@@ -349,7 +473,6 @@ with tab1:
                                 st.success(f"✅ Farneback completed: {len(object_results['object_frames'])} object movement frames detected")
                         else:
                             object_results = None
-                        
                         st.session_state.analysis_results = {
                             'type': 'video',
                             'movement_frames': camera_results['movement_frames'] if camera_results else [],
@@ -360,9 +483,7 @@ with tab1:
                             'object_results': object_results,
                             'analysis_type': analysis_type
                         }
-                        
                         st.success("🎉 Analysis completed! Check the 'Results' tab for detailed results.")
-            
             with col2:
                 st.info("""
                 **🎥 Video Analysis Features:**
@@ -371,44 +492,6 @@ with tab1:
                 - 👁️ Real-time visualization
                 - ⚡ Performance optimization with frame skipping
                 """)
-        
-        else:
-            st.image(uploaded_file, caption="📸 Uploaded Image")
-            
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
-                    with st.spinner("🔍 Analyzing image..."):
-                        detector = CameraMovementDetector(
-                            method=params['camera_method'],
-                            threshold=params['threshold'],
-                            min_match_count=params['min_match_count']
-                        )
-                        
-                        image = cv2.imread(file_path)
-                        is_movement, score, details = detector.detect(image, image)
-                        
-                        st.session_state.analysis_results = {
-                            'type': 'image',
-                            'is_movement': is_movement,
-                            'score': score,
-                            'details': details
-                        }
-                        
-                        st.success("🎉 Analysis completed! Check the 'Results' tab for detailed results.")
-            
-            with col2:
-                st.info("""
-                **🖼️ Image Analysis Features:**
-                - 🎯 Single image movement detection
-                - 🔍 Feature-based analysis
-                - 📊 Detailed movement scoring
-                """)
-        
-        try:
-            os.unlink(file_path)
-        except:
-            pass
 
 with tab2:
     display_results_tab()
@@ -425,8 +508,8 @@ with tab3:
     st.markdown("**🔗 Connect with me:**")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("[🐙 GitHub](https://github.com/SeymaErtugrul)")
-        st.markdown("[💼 LinkedIn](https://www.linkedin.com/in/seyma-ertugrul-18b1aa199/)")
+        st.markdown('<a href="https://github.com/SeymaErtugrul" target="_blank" style="text-decoration:none;">🐙 GitHub</a>', unsafe_allow_html=True)
+        st.markdown('<a href="https://www.linkedin.com/in/seyma-ertugrul-18b1aa199/" target="_blank" style="text-decoration:none;">💼 LinkedIn</a>', unsafe_allow_html=True)
     
         
 
