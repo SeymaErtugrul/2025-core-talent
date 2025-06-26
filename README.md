@@ -1,95 +1,137 @@
-# ATP Core Talent 2025
-# Core Talent AI Coder Challenge: Camera Movement Detection
+# 📷 Camera Movement Detection – Core Talent AI Challenge
 
-**Detecting Significant Camera Movement Using Image Recognition**
+This project is a solution for the **ATP Core Talent 2025** challenge.
 
----
+It is an OpenCV-based application that detects camera and object movements in videos and images.
 
-## Scenario
-
-Imagine you are tasked with building a component for a smart camera system. Your goal is to detect **significant movement**—for example, if someone moves or tilts the camera or if the entire camera is knocked or shifted. This is different from simply detecting moving objects in the scene.
-
----
-
-## Requirements
-
-1. **Input:**
-
-   * A sequence of images or frames (at least 10-20), simulating a fixed camera, with some frames representing significant camera movement (tilt, pan, large translation), and others showing a static scene or minor background/object motion.
-   * You may use public datasets, generate synthetic data, or simulate with your own webcam.
-
-     * Example: [CameraBench Dataset on Hugging Face](https://huggingface.co/datasets/syCen/CameraBench)
-2. **Task:**
-
-   * Build an algorithm (**Python preferred**) that analyzes consecutive frames and detects when significant camera movement occurs.
-   * Output a list of frames (by index/number) where significant movement is detected.
-3. **Expected Features:**
-
-   * **Basic:** Frame differencing or feature matching to detect large global shifts (e.g., using OpenCV’s ORB/SIFT/SURF, optical flow, or homography).
-   * **Bonus:** Distinguish between camera movement and object movement within the scene (e.g., use keypoint matching, estimate transformation matrices, etc.).
-4. **Deployment:**
-
-   * Wrap your solution in a small web app (**Streamlit, Gradio, or Flask**) that allows the user to upload a sequence of images (or a video), runs the detection, and displays the result.
-   * Deploy the app on a public platform (**Vercel, Streamlit Cloud, Hugging Face Spaces**, etc.)
-5. **Deliverables:**
-
-   * Public app URL
-   * GitHub repo (with code and requirements.txt)
-   * README (explaining your approach, dataset, and how to use the app)
-
-     * **Sample README Outline:**
-
-       * Overview of your approach and movement detection logic
-       * Any challenges or assumptions
-       * How to run the app locally
-       * Link to the live app
-       * Example input/output screenshots
-   * AI Prompts or Chat History (if used for support)
+- **Feature-based methods** (SIFT + FLANN and ORB + BruteMatcher) for camera motion detection
+- **Optical flow methods** (Lucas-Kanade & Farneback) for detecting and separating object movement
+- A **Streamlit web app** for interactive testing and visualization
+- Synthetic and real video test cases to validate detection accuracy
 
 ---
 
-## Evaluation Rubric
+## ⚙️ Movement Detection Logic
 
-| Criteria           | Points | Details                                                                                    |
-| ------------------ | ------ | ------------------------------------------------------------------------------------------ |
-| **Correctness**    | 5      | Accurately detects significant camera movement; low false positives/negatives.             |
-| **Implementation** | 5      | Clean code, good use of OpenCV or relevant libraries, modular structure.                   |
-| **Deployment**     | 5      | App is online, easy to use, and functions as described.                                    |
-| **Innovation**     | 3      | Advanced techniques (feature matching, transformation estimation, clear object vs camera). |
-| **Documentation**  | 2      | Clear README, instructions, and concise explanation of method/logic.                       |
+### Camera Movement Detection:
 
----
+### How It Works: SIFT & ORB
 
-## Suggested Stack
+- Convert frames to **grayscale** to speed up processing and simplify computations  
+- Detect keypoints and features using **SIFT** (accurate) or **ORB** (fast)  
+- Match features between frames:  
+  - **SIFT** uses **FLANN matcher** with ratio test to keep good matches  
+  - **ORB** uses **Brute-Force matcher** with Hamming distance for speed  
+- Estimate a **homography matrix** to understand overall frame movement  
+- Calculate movement values:  
+  - **Translation** (shift between frames)  
+  - **Determinant** (scale and rotation)  
+  - **Identity difference** (how much the frame changes)  
+- Combine these into a **movement score** and compare with a threshold  
 
-* **Python** or **C#**
-* **OpenCV** for computer vision
-* **Streamlit**, **Gradio**, or a **shadcn-powered Vercel site** for quick web UI
-* **GitHub** for code repo, **Streamlit Cloud**, **Hugging Face Spaces**, or **Vercel** for deployment
+### Object Motion Detection:
 
----
+- **Lucas-Kanade**: Tracks a small number of strong points between frames  
+- **Farneback**: Computes motion for every pixel (dense optical flow)  
 
-# 📋 Candidate Instructions
+### How It Works: Lucas-Kanade & Farneback Optical Flow
 
-1. **Fork this repository** (or start your own repository with the same structure).
-2. **Implement your movement detection algorithm** in `movement_detector.py`.
-3. **Develop a simple web app** (`app.py`) that allows users to upload images/sequences and view detection results.
-4. **Deploy your app** on a public platform (e.g., Streamlit Cloud, Hugging Face Spaces, Vercel, Heroku) and **share both your deployed app URL and GitHub repository link**.
-5. **Document your work**: Include a `README.md` that explains your approach, how to run your code, and sample results (with screenshots or example outputs).
+- Both estimate pixel movement between frames (optical flow)  
+- **Lucas-Kanade** tracks key points efficiently using pyramids  
+- **Farneback** calculates a detailed motion map for all pixels  
+- Motion magnitude and direction help detect object movement  
+- Movement scores decide if movement is significant  
+- Motion vectors and colors show movement visually  
 
----
+### Object vs Camera Movement Separation
 
-**Deadline:**
-🕓 **27.06.2025**
-
----
-
-**Plagiarism Policy:**
-
-* This must be **individual, AI-powered work**.
-* You may use open-source libraries, but you **must cite** all external resources and code snippets.
-* Do not submit work copied from others or from the internet without proper acknowledgment.
+- **Motion density**: Low for objects, high for camera  
+- **Angle consistency**: Smooth for camera, scattered for objects  
+- **Center ratio**: Camera moves near center, objects off-center  
+- **Motion uniformity**: Even for camera, irregular for objects  
+- These are new topics for me, so I am still learning and exploring better methods.  
 
 ---
 
-**Good luck! Show us your best hands-on AI skills!**
+## ⚠️ Challenges Faced
+
+- Adjusting Farneback parameters (like winsize, poly_sigma, flow thresholds) to get stable results was difficult.
+- Balancing accuracy and speed when choosing between SIFT and ORB.
+- Differentiating camera and object motion using rule-based analysis has limitations.
+- Encountered various deployment issues like file path problems and markdown rendering errors.
+- Still learning the best practices, so I often wondered if there were more efficient or accurate approaches.
+
+---
+
+## 💻 How to Run the App Locally
+
+```bash
+git clone https://github.com/SeymaErtugrul/2025-core-talent
+cd Desktop\2025-core-talent\2025-core-talent\camera-movement-detection
+pip install -r requirements.txt
+```
+
+### Streamlit App
+```bash
+streamlit run app.py
+```
+
+### Local Testing
+```bash
+python lokal_test.py
+```
+
+This will test both synthetic and real video inputs and print detection results in the console.
+
+---
+
+## ☁️ Live Demo & User Video
+
+🟢 Open the Live Streamlit App -- https://2025-core-talent.streamlit.app  
+🟢 User Video of Streamlit App -- https://www.youtube.com/watch?v=jYq_5lJQmFY
+
+---
+
+## 🖼 Example Input & Output
+
+### Streamlit Input:
+![{587F9A12-A19D-45C3-856C-9309B6C60DF7}](https://github.com/user-attachments/assets/adc83f15-596a-4df5-9c8b-e72c13251f19)
+
+### Streamlit Output:
+![{AD1B8617-A93A-4BD6-8AD1-7A0C06E88D38}](https://github.com/user-attachments/assets/7d9aee64-3b7f-425a-b2b8-304e0529d212)
+
+### Lokal Test Output (Synthetic Video & Real Video):
+![image](https://github.com/user-attachments/assets/4fb27ac4-5133-4439-b4b6-9d86d7dd538e)
+
+---
+
+## 🤔 AI Prompts & Tools Used
+
+- **ChatGPT**: Used for explanation of OpenCV algorithms, code optimization, and README formatting
+- **Cursor**: Used as code editor and assistant for refactoring & debugging  
+  Also used to compare performance of SIFT/ORB and help resolve Streamlit runtime issues during deployment.
+
+---
+
+## 📁 Project Structure
+
+```bash
+camera-movement-detection/
+├── app.py               # Streamlit UI
+├── movement_detector.py # Camera and object motion logic
+├── lokal_test.py        # Automated tests with real & synthetic video
+├── TestFolder/          # Sample test videos
+├── requirements.txt     # Python dependencies
+├── style.css            # CSS styles for the web app
+└── README.md            # Project documentation
+```
+
+---
+
+## 📄 References
+
+- [OpenCV: Feature Matching](https://docs.opencv.org/4.x/dc/dc3/tutorial_py_matcher.html)
+- [OpenCV: Optical Flow](https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html)
+- [ORB vs SIFT](https://learnopencv.com/feature-matching-using-orb)
+- [Streamlit Docs](https://docs.streamlit.io/)
+- [CameraBench Dataset](https://huggingface.co/datasets/camerabench)
