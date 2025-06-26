@@ -251,7 +251,7 @@ def setup_sidebar():
                                                     help="Number of corner points to track (lower = faster, higher = more accurate)")
             params['quality_level'] = st.sidebar.slider("⭐ Quality Level", 0.01, 0.5, 0.3, 0.01, key="quality_level",
                                                        help="Minimum quality of corner points (lower = more points, higher = better quality)")
-            params['min_distance'] = st.sidebar.slider("📏 Min Distance", 3, 15, 7, 1, key="min_distance",
+            params['min_distance'] = st.sidebar.slider("�� Min Distance", 3, 15, 7, 1, key="min_distance",
                                                       help="Minimum distance between corner points")
         else:
             st.sidebar.caption("🌊 Farneback: Detects object movement using dense optical flow")
