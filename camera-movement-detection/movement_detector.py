@@ -275,8 +275,6 @@ class LucasKanadeAnalyzer:
             rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
             live_viz_placeholder.image(rgb_frame, caption="Frame 0 - Initializing", use_container_width=True, width=350)
             
-            # Small delay to make frame-by-frame visualization visible
-            time.sleep(0.1)
         
         while True:
             if frame_count > max_frames:
@@ -292,11 +290,9 @@ class LucasKanadeAnalyzer:
             
             curr_gray = to_grayscale(frame)
             
-            # Show processing status for every frame
             if enable_live_viz and live_viz_placeholder is not None:
                 annotated_frame = frame.copy()
                 
-                # Add frame info
                 cv2.putText(annotated_frame, f"Frame: {frame_count}/{max_frames}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"Processing...", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
                 cv2.putText(annotated_frame, f"Progress: {int((frame_count/max_frames)*100)}%", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -304,7 +300,6 @@ class LucasKanadeAnalyzer:
                 rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                 live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - Processing", use_container_width=True, width=350)
                 
-                time.sleep(0.05)
             
             if p0 is None or len(p0) < self.max_corners // 3:
                 p0 = cv2.goodFeaturesToTrack(curr_gray, mask=None, **feature_params)
@@ -318,7 +313,6 @@ class LucasKanadeAnalyzer:
                         rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                         live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - No Points", use_container_width=True, width=350)
                         
-                        time.sleep(0.05)
                     
                     frames.append(frame)
                     frame_count += 1
@@ -441,7 +435,6 @@ class LucasKanadeAnalyzer:
                         rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                         live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - Lucas-Kanade Motion Detection", use_container_width=True, width=350)
                         
-                        time.sleep(0.05)
                     
                     frames.append(frame)
                     p0 = good_new.reshape(-1, 1, 2)
@@ -456,7 +449,6 @@ class LucasKanadeAnalyzer:
                         rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                         live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - No Points", use_container_width=True, width=350)
                         
-                        time.sleep(0.05)
                     
                     frames.append(frame)
                     p0 = None
@@ -471,7 +463,6 @@ class LucasKanadeAnalyzer:
                     rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                     live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - No Flow", use_container_width=True, width=350)
                     
-                    time.sleep(0.05)
                 
                 frames.append(frame)
                 p0 = None
