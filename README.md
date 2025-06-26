@@ -73,10 +73,13 @@ It is an OpenCV-based application that detects camera and object movements in vi
 
 ```bash
 git clone https://github.com/SeymaErtugrul/2025-core-talent
+```
+```bash
 cd Desktop\2025-core-talent\2025-core-talent\camera-movement-detection
+```
+```bash
 pip install -r requirements.txt
 ```
-
 ### Streamlit App
 ```bash
 streamlit run app.py
