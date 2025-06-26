@@ -11,7 +11,6 @@ from PIL import Image
 import io
 from movement_detector import CameraMovementDetector
 
-# Configure Plotly to use light theme
 import plotly.io as pio
 pio.templates.default = "plotly"
 
@@ -25,27 +24,6 @@ def load_css():
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
         st.warning("⚠️ style.css file not found. Using default styles.")
-    
-    # Add theme configuration for Plotly
-    st.markdown("""
-    <style>
-    /* Ensure Plotly charts are visible */
-    .js-plotly-plot .plotly .main-svg {
-        background-color: transparent !important;
-    }
-    .js-plotly-plot .plotly .bg {
-        background-color: transparent !important;
-    }
-    /* Force dark text for better visibility */
-    .js-plotly-plot .plotly text {
-        fill: #333333 !important;
-    }
-    /* Ensure grid lines are visible */
-    .js-plotly-plot .plotly .gridlayer path {
-        stroke: #E0E0E0 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 def display_results_tab():
     st.subheader("📊 Analysis Results & Visualizations")
@@ -486,6 +464,10 @@ with tab1:
         with video_col2:
             st.subheader("🎯 Live Analysis")
             live_viz_placeholder = st.empty()
+            
+            if params['object_method'] == "Lucas-Kanade":
+                progress_bar = st.progress(0)
+                status_text = st.empty()
         col1, col2 = st.columns([1, 2])
         with col1:
             if st.button("🚀 Start Video Analysis", type="primary", use_container_width=True):
@@ -515,11 +497,29 @@ with tab1:
                         if analysis_type in ["🎯 Object Only", "🔄 Both"]:
                             if params['object_method'] == "Lucas-Kanade":
                                 st.info("🎯 Running Lucas-Kanade object movement analysis...")
+                                
+                                # Update progress periodically
+                                def update_progress():
+                                    progress_bar.progress(50)
+                                    status_text.text("🎯 Analyzing frames with Lucas-Kanade...")
+                                
+                                # Start a timer to update progress
+                                import threading
+                                import time
+                                
+                                def progress_updater():
+                                    time.sleep(2)  # Wait 2 seconds then update progress
+                                    update_progress()
+                                
+                                progress_thread = threading.Thread(target=progress_updater)
+                                progress_thread.start()
+                                
                                 analyzer = LucasKanadeAnalyzer(
                                     max_corners=params['max_corners'],
                                     quality_level=params['quality_level'],
                                     min_distance=params['min_distance']
                                 )
+                                
                                 object_results = analyzer.analyze_video(
                                     file_path,
                                     params['object_max_frames'],
@@ -527,6 +527,11 @@ with tab1:
                                     enable_live_viz=params['enable_live_viz'],
                                     live_viz_placeholder=live_viz_placeholder
                                 )
+                                
+                                # Update progress bar
+                                progress_bar.progress(100)
+                                status_text.text("✅ Analysis completed!")
+                                
                                 st.success(f"✅ Lucas-Kanade completed: {len(object_results['object_frames'])} object movement frames detected")
                             else:
                                 st.info("🌊 Running Farneback object movement analysis...")

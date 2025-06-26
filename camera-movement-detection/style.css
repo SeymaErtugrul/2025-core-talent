@@ -102,7 +102,6 @@ div.st-emotion-cache-1v0mbdj.eczjsme3 {
 .stWarning { background-color: #fff3e0 !important; color: #e65100 !important; }
 .stError { background-color: #ffebee !important; color: #c62828 !important; }
 
-/* Make white text purple for better readability */
 * {
     color: #8B008B !important;
 }
@@ -117,16 +116,27 @@ div.st-emotion-cache-1v0mbdj.eczjsme3 {
     color: #8B008B !important;
 }
 
-/* Plotly chart text */
 .stPlotlyChart * {
     color: #8B008B !important;
 }
 
-/* Any remaining white text */
 p, span, div, label, h1, h2, h3, h4, h5, h6 {
     color: #8B008B !important;
 }
 
 h1 {
     color: #8B008B;
+}
+
+.js-plotly-plot .plotly .main-svg {
+    background-color: transparent !important;
+}
+.js-plotly-plot .plotly .bg {
+    background-color: transparent !important;
+}
+.js-plotly-plot .plotly text {
+    fill: #333333 !important;
+}
+.js-plotly-plot .plotly .gridlayer path {
+    stroke: #E0E0E0 !important;
 } 

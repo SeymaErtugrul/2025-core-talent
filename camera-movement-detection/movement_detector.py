@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from typing import List
+import time
 
 
 def to_grayscale(frame: np.ndarray) -> np.ndarray:
@@ -208,6 +209,280 @@ class CameraMovementDetector:
         
         cap.release()
         return create_result_dict(movement_frames, movement_scores, frames, frame_count, details_list, result_type="camera")
+
+
+class LucasKanadeAnalyzer:
+    
+    def __init__(self, max_corners=150, quality_level=0.1, min_distance=7):
+        self.max_corners = max_corners
+        self.quality_level = quality_level
+        self.min_distance = min_distance
+        
+    def analyze_video(self, video_path, max_frames=120, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
+        cap = open_video(video_path)
+        if cap is None:
+            return None
+        
+        cap, prev_frame = read_first_frame(cap)
+        if prev_frame is None:
+            return None
+        
+        prev_gray = to_grayscale(prev_frame)
+        frame_area = prev_gray.shape[0] * prev_gray.shape[1]
+        
+        win_size, max_level, block_size = get_adaptive_lk_params(frame_area)
+        
+        lk_params = dict(
+            winSize=win_size,
+            maxLevel=max_level,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 25, 0.03)
+        )
+        
+        feature_params = dict(
+            maxCorners=self.max_corners,
+            qualityLevel=self.quality_level,
+            minDistance=self.min_distance,
+            blockSize=block_size,
+            useHarrisDetector=True,
+            k=0.04
+        )
+        
+        p0 = cv2.goodFeaturesToTrack(prev_gray, mask=None, **feature_params)
+        if p0 is None:
+            cap.release()
+            return None
+        
+        object_frames = []
+        object_scores = []
+        frames = []
+        movement_history = []
+        max_history = 7
+        flow_history = []
+        max_flow_history = 5
+        base_threshold = 0.06
+        adaptive_threshold = base_threshold
+        
+        frame_count = 0
+        processed_frames = 0
+        
+        # Show initial frame
+        if enable_live_viz and live_viz_placeholder is not None:
+            annotated_frame = prev_frame.copy()
+            cv2.putText(annotated_frame, "Initializing Lucas-Kanade...", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(annotated_frame, f"Frame: 0/{max_frames}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(annotated_frame, f"Points: {len(p0) if p0 is not None else 0}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            
+            rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+            live_viz_placeholder.image(rgb_frame, caption="Frame 0 - Initializing", use_container_width=True, width=350)
+            
+            # Small delay to make frame-by-frame visualization visible
+            time.sleep(0.1)
+        
+        while True:
+            if frame_count > max_frames:
+                break
+            
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            if frame_count % frame_skip != 0:
+                frame_count += 1
+                continue
+            
+            curr_gray = to_grayscale(frame)
+            
+            # Show processing status for every frame
+            if enable_live_viz and live_viz_placeholder is not None:
+                annotated_frame = frame.copy()
+                
+                # Add frame info
+                cv2.putText(annotated_frame, f"Frame: {frame_count}/{max_frames}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Processing...", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Progress: {int((frame_count/max_frames)*100)}%", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                
+                rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - Processing", use_container_width=True, width=350)
+                
+                time.sleep(0.05)
+            
+            if p0 is None or len(p0) < self.max_corners // 3:
+                p0 = cv2.goodFeaturesToTrack(curr_gray, mask=None, **feature_params)
+                if p0 is None:
+                    if enable_live_viz and live_viz_placeholder is not None:
+                        annotated_frame = frame.copy()
+                        cv2.putText(annotated_frame, "No tracking points found", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Frame: {frame_count}/{max_frames}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, "Reinitializing...", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        
+                        rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                        live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - No Points", use_container_width=True, width=350)
+                        
+                        time.sleep(0.05)
+                    
+                    frames.append(frame)
+                    frame_count += 1
+                    continue
+            
+            p1, st_flow, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, p0, None, **lk_params)
+            
+            if p1 is not None:
+                good_new = p1[st_flow == 1]
+                good_old = p0[st_flow == 1]
+                
+                if len(good_new) > 0 and len(good_old) > 0:
+                    flow_vectors = good_new - good_old
+                    flow_magnitudes = np.sqrt(flow_vectors[:, 0]**2 + flow_vectors[:, 1]**2)
+                    
+                    mean_flow = np.mean(flow_magnitudes)
+                    std_flow = np.std(flow_magnitudes)
+                    max_flow = np.max(flow_magnitudes)
+                    median_flow = np.median(flow_magnitudes)
+                    q75_flow = np.percentile(flow_magnitudes, 75)
+                    q25_flow = np.percentile(flow_magnitudes, 25)
+                    
+                    flow_angles = np.arctan2(flow_vectors[:, 1], flow_vectors[:, 0])
+                    angle_consistency = 1.0 - (std_flow / (mean_flow + 1e-6))
+                    
+                    flow_iqr = q75_flow - q25_flow
+                    flow_cv = std_flow / (mean_flow + 1e-6)
+                    
+                    flow_history.append(mean_flow)
+                    if len(flow_history) > max_flow_history:
+                        flow_history.pop(0)
+                    
+                    if len(flow_history) >= 3:
+                        recent_avg_flow = np.mean(flow_history[-3:])
+                        adaptive_threshold = max(base_threshold, recent_avg_flow * 0.3)
+                    
+                    criteria_1 = mean_flow > adaptive_threshold
+                    criteria_2 = len(good_new) > 1
+                    criteria_3 = max_flow > mean_flow * 1.1
+                    criteria_4 = median_flow > adaptive_threshold * 0.4
+                    criteria_5 = angle_consistency < 0.85
+                    criteria_6 = flow_cv > 0.3
+                    criteria_7 = flow_iqr > mean_flow * 0.5
+                    
+                    score = sum([criteria_1, criteria_2, criteria_3, criteria_4, criteria_5, criteria_6, criteria_7])
+                    
+                    is_object_movement = score >= 6
+                    confidence = min(1.0, score / 7.0) if is_object_movement else 0.5
+                    
+                    if is_object_movement:
+                        movement_history.append(mean_flow * confidence)
+                        
+                        if len(movement_history) > max_history:
+                            movement_history.pop(0)
+                        
+                        sustained_movement = len(movement_history) >= 3 and np.mean(movement_history[-3:]) > adaptive_threshold * 0.8
+                        
+                        if sustained_movement:
+                            is_object_movement = True
+                            confidence *= 1.2
+                        else:
+                            is_object_movement = False
+                    
+                    movement_score = (mean_flow * 2.0 + max_flow * 0.5 + std_flow * 1.5) * (confidence if is_object_movement else 0.5)
+                    
+                    if is_object_movement:
+                        object_frames.append(frame_count)
+                        object_scores.append(movement_score)
+                    
+                    if enable_live_viz and live_viz_placeholder is not None:
+                        annotated_frame = frame.copy()
+                        
+                        for new, old in zip(good_new, good_old):
+                            a, b = new.ravel()
+                            c, d = old.ravel()
+                            
+                            x1, y1 = int(c), int(d)
+                            x2, y2 = int(a), int(b)
+                            
+                            h, w = frame.shape[:2]
+                            if 0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h:
+                                flow_mag = np.sqrt((x2-x1)**2 + (y2-y1)**2)
+                                
+                                if is_object_movement:
+                                    if flow_mag > 10:
+                                        color = (0, 255, 0)
+                                        thickness = 4
+                                    elif flow_mag > 6:
+                                        color = (0, 220, 0)
+                                        thickness = 3
+                                    elif flow_mag > 3:
+                                        color = (0, 180, 0)
+                                        thickness = 2
+                                    else:
+                                        color = (0, 140, 0)
+                                        thickness = 1
+                                else:
+                                    if flow_mag > 4:
+                                        color = (0, 0, 255)
+                                        thickness = 2
+                                    elif flow_mag > 2:
+                                        color = (0, 0, 200)
+                                        thickness = 1
+                                    else:
+                                        color = (100, 100, 100)
+                                        thickness = 1
+                                
+                                cv2.line(annotated_frame, (x1, y1), (x2, y2), color, thickness)
+                                cv2.circle(annotated_frame, (x1, y1), 2, (255, 0, 0), -1)
+                                cv2.circle(annotated_frame, (x2, y2), 2, (0, 255, 255), -1)
+                        
+                        text = f"Movement: {'Object' if is_object_movement else 'Camera/None'}"
+                        cv2.putText(annotated_frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Points: {len(good_new)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Mean Flow: {mean_flow:.2f}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Confidence: {score}/7", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Frame: {frame_count}/{max_frames}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Progress: {int((frame_count/max_frames)*100)}%", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        
+                        rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                        live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - Lucas-Kanade Motion Detection", use_container_width=True, width=350)
+                        
+                        time.sleep(0.05)
+                    
+                    frames.append(frame)
+                    p0 = good_new.reshape(-1, 1, 2)
+                else:
+                    # No good points found, still show frame
+                    if enable_live_viz and live_viz_placeholder is not None:
+                        annotated_frame = frame.copy()
+                        cv2.putText(annotated_frame, "No tracking points found", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Frame: {frame_count}/{max_frames}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        cv2.putText(annotated_frame, f"Progress: {int((frame_count/max_frames)*100)}%", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        
+                        rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                        live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - No Points", use_container_width=True, width=350)
+                        
+                        time.sleep(0.05)
+                    
+                    frames.append(frame)
+                    p0 = None
+            else:
+
+                if enable_live_viz and live_viz_placeholder is not None:
+                    annotated_frame = frame.copy()
+                    cv2.putText(annotated_frame, "No optical flow calculated", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    cv2.putText(annotated_frame, f"Frame: {frame_count}/{max_frames}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    cv2.putText(annotated_frame, f"Progress: {int((frame_count/max_frames)*100)}%", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    
+                    rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                    live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - No Flow", use_container_width=True, width=350)
+                    
+                    time.sleep(0.05)
+                
+                frames.append(frame)
+                p0 = None
+            
+            prev_gray = curr_gray
+            frame_count += 1
+            processed_frames += 1
+        
+        cap.release()
+        
+        return create_result_dict(object_frames, object_scores, frames, frame_count, result_type="object")
 
 
 class LucasKanadeDetector:
@@ -549,215 +824,6 @@ class ObjectMovementDetector:
         return create_result_dict(object_frames, object_scores, frames, frame_idx - 1, details_list, annotated_frames, 'Farneback Optical Flow')
 
 
-class LucasKanadeAnalyzer:
-    
-    def __init__(self, max_corners=150, quality_level=0.1, min_distance=7):
-        self.max_corners = max_corners
-        self.quality_level = quality_level
-        self.min_distance = min_distance
-        
-    def analyze_video(self, video_path, max_frames=120, frame_skip=1, enable_live_viz=False, live_viz_placeholder=None):
-        cap = open_video(video_path)
-        if cap is None:
-            return None
-        
-        cap, prev_frame = read_first_frame(cap)
-        if prev_frame is None:
-            return None
-        
-        prev_gray = to_grayscale(prev_frame)
-        frame_area = prev_gray.shape[0] * prev_gray.shape[1]
-        
-        win_size, max_level, block_size = get_adaptive_lk_params(frame_area)
-        
-        lk_params = dict(
-            winSize=win_size,
-            maxLevel=max_level,
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 25, 0.03)
-        )
-        
-        feature_params = dict(
-            maxCorners=self.max_corners,
-            qualityLevel=self.quality_level,
-            minDistance=self.min_distance,
-            blockSize=block_size,
-            useHarrisDetector=True,
-            k=0.04
-        )
-        
-        p0 = cv2.goodFeaturesToTrack(prev_gray, mask=None, **feature_params)
-        if p0 is None:
-            cap.release()
-            return None
-        
-        object_frames = []
-        object_scores = []
-        frames = []
-        movement_history = []
-        max_history = 7
-        flow_history = []
-        max_flow_history = 5
-        base_threshold = 0.06
-        adaptive_threshold = base_threshold
-        
-        frame_count = 0
-        processed_frames = 0
-        
-        while True:
-            if frame_count > max_frames:
-                break
-            
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            if frame_count % frame_skip != 0:
-                frame_count += 1
-                continue
-            
-            curr_gray = to_grayscale(frame)
-            
-            if p0 is None or len(p0) < self.max_corners // 3:
-                p0 = cv2.goodFeaturesToTrack(curr_gray, mask=None, **feature_params)
-                if p0 is None:
-                    frames.append(frame)
-                    frame_count += 1
-                    continue
-            
-            p1, st_flow, err = cv2.calcOpticalFlowPyrLK(prev_gray, curr_gray, p0, None, **lk_params)
-            
-            if p1 is not None:
-                good_new = p1[st_flow == 1]
-                good_old = p0[st_flow == 1]
-                
-                if len(good_new) > 0 and len(good_old) > 0:
-                    flow_vectors = good_new - good_old
-                    flow_magnitudes = np.sqrt(flow_vectors[:, 0]**2 + flow_vectors[:, 1]**2)
-                    
-                    mean_flow = np.mean(flow_magnitudes)
-                    std_flow = np.std(flow_magnitudes)
-                    max_flow = np.max(flow_magnitudes)
-                    median_flow = np.median(flow_magnitudes)
-                    q75_flow = np.percentile(flow_magnitudes, 75)
-                    q25_flow = np.percentile(flow_magnitudes, 25)
-                    
-                    flow_angles = np.arctan2(flow_vectors[:, 1], flow_vectors[:, 0])
-                    angle_consistency = 1.0 - (std_flow / (mean_flow + 1e-6))
-                    
-                    flow_iqr = q75_flow - q25_flow
-                    flow_cv = std_flow / (mean_flow + 1e-6)
-                    
-                    flow_history.append(mean_flow)
-                    if len(flow_history) > max_flow_history:
-                        flow_history.pop(0)
-                    
-                    if len(flow_history) >= 3:
-                        recent_avg_flow = np.mean(flow_history[-3:])
-                        adaptive_threshold = max(base_threshold, recent_avg_flow * 0.3)
-                    
-                    criteria_1 = mean_flow > adaptive_threshold
-                    criteria_2 = len(good_new) > 1
-                    criteria_3 = max_flow > mean_flow * 1.1
-                    criteria_4 = median_flow > adaptive_threshold * 0.4
-                    criteria_5 = angle_consistency < 0.85
-                    criteria_6 = flow_cv > 0.3
-                    criteria_7 = flow_iqr > mean_flow * 0.5
-                    
-                    score = sum([criteria_1, criteria_2, criteria_3, criteria_4, criteria_5, criteria_6, criteria_7])
-                    
-                    is_object_movement = score >= 6
-                    
-                    if is_object_movement:
-                        confidence = min(1.0, score / 7.0)
-                        movement_history.append(mean_flow * confidence)
-                        
-                        if len(movement_history) > max_history:
-                            movement_history.pop(0)
-                        
-                        sustained_movement = len(movement_history) >= 3 and np.mean(movement_history[-3:]) > adaptive_threshold * 0.8
-                        
-                        if sustained_movement:
-                            is_object_movement = True
-                            confidence *= 1.2
-                        else:
-                            is_object_movement = False
-                    
-                    movement_score = (mean_flow * 2.0 + max_flow * 0.5 + std_flow * 1.5) * (confidence if is_object_movement else 0.5)
-                    
-                    if is_object_movement:
-                        object_frames.append(frame_count)
-                        object_scores.append(movement_score)
-                    
-                    # Live visualization
-                    if enable_live_viz and live_viz_placeholder is not None:
-                        annotated_frame = frame.copy()
-                        
-                        for new, old in zip(good_new, good_old):
-                            a, b = new.ravel()
-                            c, d = old.ravel()
-                            
-                            x1, y1 = int(c), int(d)
-                            x2, y2 = int(a), int(b)
-                            
-                            h, w = frame.shape[:2]
-                            if 0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h:
-                                flow_mag = np.sqrt((x2-x1)**2 + (y2-y1)**2)
-                                
-                                if is_object_movement:
-                                    if flow_mag > 10:
-                                        color = (0, 255, 0)
-                                        thickness = 4
-                                    elif flow_mag > 6:
-                                        color = (0, 220, 0)
-                                        thickness = 3
-                                    elif flow_mag > 3:
-                                        color = (0, 180, 0)
-                                        thickness = 2
-                                    else:
-                                        color = (0, 140, 0)
-                                        thickness = 1
-                                else:
-                                    if flow_mag > 4:
-                                        color = (0, 0, 255)
-                                        thickness = 2
-                                    elif flow_mag > 2:
-                                        color = (0, 0, 200)
-                                        thickness = 1
-                                    else:
-                                        color = (100, 100, 100)
-                                        thickness = 1
-                                
-                                cv2.line(annotated_frame, (x1, y1), (x2, y2), color, thickness)
-                                cv2.circle(annotated_frame, (x1, y1), 2, (255, 0, 0), -1)
-                                cv2.circle(annotated_frame, (x2, y2), 2, (0, 255, 255), -1)
-                        
-                        text = f"Movement: {'Object' if is_object_movement else 'Camera/None'}"
-                        cv2.putText(annotated_frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                        cv2.putText(annotated_frame, f"Points: {len(good_new)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                        cv2.putText(annotated_frame, f"Mean Flow: {mean_flow:.2f}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                        cv2.putText(annotated_frame, f"Confidence: {score}/10", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                        
-                        rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                        live_viz_placeholder.image(rgb_frame, caption=f"Frame {frame_count} - Lucas-Kanade Motion Detection", use_container_width=True, width=350)
-                    
-                    frames.append(frame)
-                    p0 = good_new.reshape(-1, 1, 2)
-                else:
-                    frames.append(frame)
-                    p0 = None
-            else:
-                frames.append(frame)
-                p0 = None
-            
-            prev_gray = curr_gray
-            frame_count += 1
-            processed_frames += 1
-        
-        cap.release()
-        
-        return create_result_dict(object_frames, object_scores, frames, frame_count, result_type="object")
-
-
 class FarnebackAnalyzer:
     """Farneback optical flow analyzer for object movement detection"""
     
@@ -837,7 +903,6 @@ class FarnebackAnalyzer:
                 object_frames.append(frame_count)
                 object_scores.append(movement_score)
             
-            # Live visualization
             if enable_live_viz and live_viz_placeholder is not None:
                 annotated_frame = frame.copy()
                 
