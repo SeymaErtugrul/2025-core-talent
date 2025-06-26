@@ -223,9 +223,9 @@ def setup_sidebar():
         'object_method': "Lucas-Kanade",
         'threshold': 0.5,
         'min_match_count': 4,
-        'camera_max_frames': 50,
+        'camera_max_frames': 200,
         'debug': False,
-        'object_max_frames': 50,
+        'object_max_frames': 200,
         'max_corners': 150,
         'quality_level': 0.3,
         'min_distance': 7,
@@ -271,12 +271,12 @@ def setup_sidebar():
     st.sidebar.subheader("⚡ Performance")
     if analysis_type in ["📹 Camera Only", "🔄 Both"]:
         params['camera_max_frames'] = st.sidebar.slider(
-            "🎬 Camera Max Frames", 10, 300, 100, 10, key="camera_max_frames",
+            "🎬 Camera Max Frames", 10, 300, 200, 10, key="camera_max_frames",
             help="Maximum number of frames to analyze for camera movement. Lower = faster analysis."
         )
     if analysis_type in ["🎯 Object Only", "🔄 Both"]:
         params['object_max_frames'] = st.sidebar.slider(
-            "🎬 Object Max Frames", 10, 300, 100, 10, key="object_max_frames",
+            "🎬 Object Max Frames", 10, 300, 200, 10, key="object_max_frames",
             help="Maximum number of frames to analyze for object movement. Lower = faster analysis."
         )
     params['frame_skip'] = st.sidebar.slider("⏭️ Frame Skip", 1, 5, 1, 1, key="frame_skip")
@@ -470,6 +470,7 @@ with tab1:
                 status_text = st.empty()
         col1, col2 = st.columns([1, 2])
         with col1:
+            st.markdown("<span style='color: #FF6B6B; font-size: 16px;'><b>Note:</b> If the video is long, only up to 200 frames will be analyzed.</span>", unsafe_allow_html=True)
             if st.button("🚀 Start Video Analysis", type="primary", use_container_width=True):
                 if uploaded_file is not None:
                     with st.spinner("🔍 Analyzing video..."):
