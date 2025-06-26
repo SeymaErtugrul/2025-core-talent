@@ -132,4 +132,4 @@ camera-movement-detection/
 - [OpenCV: Feature Matching](https://docs.opencv.org/4.x/dc/dc3/tutorial_py_matcher.html)
 - [OpenCV: Optical Flow](https://docs.opencv.org/4.x/d4/dee/tutorial_optical_flow.html)
 - [Streamlit Docs](https://docs.streamlit.io/)
-- [CameraBench Dataset](https://huggingface.co/datasets/camerabench)
+- [CameraBench Dataset]([https://huggingface.co/datasets/camerabench](https://huggingface.co/datasets))
