@@ -2,8 +2,15 @@
 
 This project is a solution for the **ATP Core Talent 2025** challenge.
 
+---
+
+## ☁️ Live Demo & User Video
+
+🟢 Open the Live Streamlit App -- https://2025-core-talent.streamlit.app  
+🟢 User Video of Streamlit App -- https://www.youtube.com/watch?v=jYq_5lJQmFY
 It is an OpenCV-based application that detects camera and object movements in videos and images.
 
+---
 - **Feature-based methods** (SIFT + FLANN and ORB + BruteMatcher) for camera motion detection
 - **Optical flow methods** (Lucas-Kanade & Farneback) for detecting and separating object movement
 - A **Streamlit web app** for interactive testing and visualization
@@ -82,13 +89,6 @@ python lokal_test.py
 ```
 
 This will test both synthetic and real video inputs and print detection results in the console.
-
----
-
-## ☁️ Live Demo & User Video
-
-🟢 Open the Live Streamlit App -- https://2025-core-talent.streamlit.app  
-🟢 User Video of Streamlit App -- https://www.youtube.com/watch?v=jYq_5lJQmFY
 
 ---
 
